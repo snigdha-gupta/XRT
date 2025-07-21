@@ -49,8 +49,8 @@ namespace xdp {
       bool valid;
       std::unique_ptr<AieProfileImpl> implementation;
       std::shared_ptr<AieProfileMetadata> metadata;
-      std::atomic<bool> threadCtrlBool;
-      std::thread thread;
+      // std::atomic<bool> threadCtrlBool;
+      // std::thread thread;
 
     };
     std::map<void*, AIEData>  handleToAIEData;

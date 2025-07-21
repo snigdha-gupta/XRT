@@ -40,7 +40,7 @@ namespace xdp {
                             "XRT", "Parsing AIE Profile Metadata.");
     VPDatabase* db = VPDatabase::Instance();
 
-    metadataReader = (db->getStaticInfo()).getAIEmetadataReader();
+    metadataReader = (db->getStaticInfo()).getAIEmetadataReader(deviceID);
     if (!metadataReader) {
       return;
     }

@@ -42,6 +42,7 @@ AIETraceConfigFiletype::getPartitionOverlayStartCols() const {
     std::vector<uint8_t> allStartColShifts;
     for (auto const &shift : partitionOverlays.get()) {
         uint8_t colShift = xdp::aie::convertStringToUint8(shift.second.data());
+        std::cout << "\n\n!!! trace colShift: " << static_cast<int>(colShift) << std::endl;
         allStartColShifts.push_back(colShift);
     }
 

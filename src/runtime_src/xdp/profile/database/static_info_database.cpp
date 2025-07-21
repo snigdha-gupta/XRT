@@ -35,6 +35,7 @@
 #include "xdp/profile/database/static_info/xclbin_info.h"
 #include "xdp/profile/database/static_info_database.h"
 #include "xdp/profile/device/pl_device_intf.h"
+#include "xdp/profile/device/utility.h"
 #include "xdp/profile/plugin/vp_base/utility.h"
 #include "xdp/profile/writer/vp_base/vp_run_summary.h"
 
@@ -1614,6 +1615,19 @@ namespace xdp {
     }
     return it->second;
   }
+  
+  uint64_t VPStaticDatabase::getXDPUniqueId(void* handle)
+  {
+    auto style = getAppStyle();
+    if (AppStyle::LOAD_XCLBIN_STYLE == style) {
+      // handle is an xclDeviceHandle in this style
+      // Use sysfs path based unique device identifier in XDP
+      return db->addDevice(util::getDebugIpLayoutPath(handle));
+    }
+    // For REGISTER_XCLBIN_STYLE and APP_STYLE_NOT_SET
+    // handle is an HW Ctx Impl pointer
+    return getHwCtxImplUid(handle);
+  }
 
   // Return true if we should reset the device information.
   // Return false if we should not reset device information
@@ -2449,7 +2463,7 @@ namespace xdp {
 
     setDeviceNameFromXclbin(deviceId, xrtXclbin);
     if (readAIEdata) {
-      readAIEMetadata(xrtXclbin, clientBuild);
+      readAIEMetadata(deviceId, xrtXclbin, clientBuild);
       setAIEGeneration(deviceId);
     }
 
@@ -2512,22 +2526,28 @@ namespace xdp {
     }
   }
 
-  void VPStaticDatabase::readAIEMetadata(xrt::xclbin xrtXclbin, bool checkDisk)
+  void VPStaticDatabase::readAIEMetadata(uint64_t deviceId, xrt::xclbin xrtXclbin, bool checkDisk)
   {
     // If "checkDisk" is specified, then look on disk only for the files
     // Look for aie_trace_config first, then check for aie_control_config
     // only if we cannot find it.
+    boost::property_tree::ptree aieMetadata;
+    std::unique_ptr<aie::BaseFiletypeImpl> metadataReader;
     if (checkDisk) {
       metadataReader =
         aie::readAIEMetadata("aie_trace_config.json", aieMetadata);
       if (!metadataReader)
         metadataReader =
           aie::readAIEMetadata("aie_control_config.json", aieMetadata);
-      if (!metadataReader)
+      if (metadataReader) {
+        xrt_core::message::send(xrt_core::message::severity_level::debug, "XRT",
+                              "AIE metadata read successfully from disk!");
+        metadataReaders.emplace(deviceId, std::move(metadataReader));
+      } else 
         xrt_core::message::send(xrt_core::message::severity_level::debug, "XRT",
                                 "AIE metadata read failed!");
-      return;
-    }
+        return;
+      }
     
     // If we aren't checking the disk, then check the currently loaded xclbin
     auto data =
@@ -2541,19 +2561,24 @@ namespace xdp {
         aie::readAIEMetadata(data.first, data.second, aieMetadata);
     }
 
-    if (!metadataReader)
+    if (metadataReader) {
+      xrt_core::message::send(xrt_core::message::severity_level::debug, "XRT",
+                            "AIE metadata read successfully from xclbin!");
+      metadataReaders.emplace(deviceId, std::move(metadataReader));
+    } else
       xrt_core::message::send(xrt_core::message::severity_level::debug, "XRT",
                               "AIE metadata read failed!");
-    else
-      xrt_core::message::send(xrt_core::message::severity_level::debug, "XRT",
-                              "AIE metadata read successfully!");
+
   }
 
   const xdp::aie::BaseFiletypeImpl*
-  VPStaticDatabase::getAIEmetadataReader() const
+  VPStaticDatabase::getAIEmetadataReader(uint64_t deviceId) const
   {
     xrt_core::message::send(xrt_core::message::severity_level::info, "XRT", "AIE metadataReader requested");
-    return metadataReader.get();
+    if (metadataReaders.find(deviceId) == metadataReaders.end())
+      return nullptr;
+  
+    return metadataReaders.at(deviceId).get();
   }
 
   void VPStaticDatabase::setAIEGeneration(uint64_t deviceId) {
@@ -2561,11 +2586,11 @@ namespace xdp {
     if (deviceInfo.find(deviceId) == deviceInfo.end())
       return;
 
-    if (!metadataReader)
+    if (!getAIEmetadataReader(deviceId))
       return;
 
     try {
-      auto hwGen = metadataReader->getHardwareGeneration();
+      auto hwGen = metadataReaders[deviceId]->getHardwareGeneration();
       deviceInfo[deviceId]->setAIEGeneration(hwGen);
     } catch(...) {
       return;
@@ -2585,11 +2610,11 @@ namespace xdp {
     if (!xclbin)
       return;
 
-    if (!metadataReader)
-       return;
+    if (!getAIEmetadataReader(deviceId))
+      return;
 
     try {
-      xclbin->aie.clockRateAIEMHz = metadataReader->getAIEClockFreqMHz();
+      xclbin->aie.clockRateAIEMHz = metadataReaders[deviceId]->getAIEClockFreqMHz();
       xrt_core::message::send(xrt_core::message::severity_level::info, "XRT", "read clockRateAIEMHz: "
                                                         + std::to_string(xclbin->aie.clockRateAIEMHz));
     } catch(...) {

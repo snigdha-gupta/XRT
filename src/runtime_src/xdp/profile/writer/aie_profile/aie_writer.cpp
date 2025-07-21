@@ -57,9 +57,10 @@ namespace xdp {
 
   void AIEProfilingWriter::writeMetricSettings()
   {
-    auto metadataReader = (db->getStaticInfo()).getAIEmetadataReader();
+    auto metadataReader = (db->getStaticInfo()).getAIEmetadataReader(mDeviceIndex);
     uint8_t col_shift = metadataReader->getPartitionOverlayStartCols().front();
-    auto validConfig = (db->getStaticInfo()).getProfileConfig();
+    std::cout << "!!! writer col shift: " << static_cast<int>(col_shift) << std::endl;
+    auto validConfig = (db->getStaticInfo()).getProfileConfig(mDeviceIndex);
 
     std::map<module_type, std::vector<std::string>> filteredConfig;
     for(uint8_t i=0; i<static_cast<uint8_t>(module_type::num_types); i++)

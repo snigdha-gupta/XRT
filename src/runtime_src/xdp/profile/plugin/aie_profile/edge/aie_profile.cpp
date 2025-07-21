@@ -310,7 +310,10 @@ namespace xdp {
       for (auto& tileMetric : configMetrics) {
         auto& metricSet  = tileMetric.second;
         auto tile        = tileMetric.first;
-        auto col         = tile.col + startColShift;
+        auto col = tile.col;
+        if (xdp::VPDatabase::Instance()->getStaticInfo().getAppStyle() == xdp::AppStyle::LOAD_XCLBIN_STYLE) {
+          col += startColShift;
+        } 
         auto row         = tile.row;
         auto subtype     = tile.subtype;
         auto type        = aie::getModuleType(row, metadata->getAIETileRowOffset());
@@ -331,6 +334,11 @@ namespace xdp {
 
         auto loc         = XAie_TileLoc(col, row);
         auto& xaieTile   = aieDevice->tile(col, row);
+
+        if (xdp::VPDatabase::Instance()->getStaticInfo().getAppStyle() == xdp::AppStyle::REGISTER_XCLBIN_STYLE) {
+          col += startColShift;
+        } 
+
         auto xaieModule  = (mod == XAIE_CORE_MOD) ? xaieTile.core()
                          : ((mod == XAIE_MEM_MOD) ? xaieTile.mem() 
                          : xaieTile.pl());
@@ -503,13 +511,32 @@ namespace xdp {
     return runtimeCounters;
   }
 
+  void AieProfile_EdgeImpl::startPoll(const uint32_t index, void* handle)
+  {
+    xrt_core::message::send(severity_level::debug, "XRT", " In AieProfile_EdgeImpl::startPoll");
+    thread = new std::thread(&AieProfile_EdgeImpl::continuePoll, this, index, handle); 
+    xrt_core::message::send(severity_level::debug, "XRT", " In AieProfile_EdgeImpl::startPoll, after creating thread instance");
+  }
+
+  void AieProfile_EdgeImpl::continuePoll(const uint32_t index, void* handle)
+  {
+    xrt_core::message::send(severity_level::debug, "XRT", " In AieProfile_EdgeImpl::continuePoll");
+
+    while (threadCtrlBool) {
+      poll(index, handle);
+      std::this_thread::sleep_for(std::chrono::microseconds(metadata->getPollingIntervalVal()));
+    }
+    //Final Polling Operation
+    poll(index, handle);
+  }
+
   void AieProfile_EdgeImpl::poll(const uint32_t index, void* handle)
   {
     // Wait until xclbin has been loaded and device has been updated in database
     if (!(db->getStaticInfo().isDeviceReady(index)))
       return;
-    XAie_DevInst* aieDevInst =
-      static_cast<XAie_DevInst*>(db->getStaticInfo().getAieDevInst(fetchAieDevInst, handle)) ;
+    // XAie_DevInst* aieDevInst =
+    //   static_cast<XAie_DevInst*>(db->getStaticInfo().getAieDevInst(fetchAieDevInst, handle)) ;
     if (!aieDevInst)
       return;
 
@@ -519,6 +546,7 @@ namespace xdp {
 
     // Iterate over all AIE Counters & Timers
     auto numCounters = db->getStaticInfo().getNumAIECounter(index);
+    // std::cout << "\n\n!!! numCounters: " << numCounters << " !!!\n\n" << std::endl;
     for (uint64_t c=0; c < numCounters; c++) {
       auto aie = db->getStaticInfo().getAIECounter(index, c);
       if (!aie)
