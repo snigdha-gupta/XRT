@@ -32,41 +32,6 @@ using severity_level = xrt_core::message::severity_level;
 AIETraceConfigFiletype::AIETraceConfigFiletype(boost::property_tree::ptree& aie_project)
 : AIEControlConfigFiletype(aie_project) {}
 
-/*
-void AIETraceConfigFiletype::print_ptree(const boost::property_tree::ptree& tree, int level) {
-    std::cout << "\n\n\n!!! Starting tree print in aie_trace at level " << level << "..." << std::endl;
-    std::cout << "!!! Tree size: " << tree.size() << std::endl;
-        
-    for (const auto& node : tree) {
-    // Try to access node.first
-    try {
-        std::cout << std::string(level * 2, ' ');
-        std::cout << node.first << ": ";
-    } catch (const std::exception& e) {
-        std::cerr << "!!! Exception while accessing node.first: " << e.what() << std::endl;
-        continue; // Skip to next node
-    } catch (...) {
-        std::cerr << "!!! Unknown exception while accessing node.first." << std::endl;
-        continue;
-    }
-
-    // Try to access node.second
-    try {
-        if (node.second.empty()) {
-        std::cout << node.second.get_value<std::string>() << std::endl;
-        } else {
-        std::cout << std::endl;
-        print_ptree(node.second, level + 1);
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "!!! Exception while accessing node.second: " << e.what() << std::endl;
-    } catch (...) {
-        std::cerr << "!!! Unknown exception while accessing node.second." << std::endl;
-    }
-    }
-}
-*/
-
 std::vector<uint8_t>
 AIETraceConfigFiletype::getPartitionOverlayStartCols() const {
     auto partitionOverlays = aie_meta.get_child_optional("aie_metadata.driver_config.partition_overlay_start_cols");
