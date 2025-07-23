@@ -51,6 +51,9 @@ class AIETraceConfigFiletype : public AIEControlConfigFiletype {
         getTiles(const std::string& graph_name,
                  module_type type, 
                  const std::string& kernel_name = "all") const override;
+
+        // void print_ptree(const boost::property_tree::ptree& tree, int level = 0);
+
 };
 
 } // namespace xdp::aie

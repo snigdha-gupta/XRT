@@ -26,10 +26,11 @@
 namespace xdp {
 
   AIEProfilingWriter::AIEProfilingWriter(const char* fileName,
-                                         const char* deviceName, uint64_t deviceIndex) :
+                                         const char* deviceName, uint64_t deviceIndex, uint64_t deviceID) :
     VPWriter(fileName),
     mDeviceName(deviceName),
-    mDeviceIndex(deviceIndex), mHeaderWritten(false)
+    mDeviceIndex(deviceIndex), 
+    mDeviceID(deviceID), mHeaderWritten(false)
   {
   }
 
@@ -40,7 +41,7 @@ namespace xdp {
     float fileVersion = 1.2f;
 
     // Report HW generation to inform analysis how to interpret event IDs
-    auto aieGeneration = (db->getStaticInfo()).getAIEGeneration(mDeviceIndex);
+    auto aieGeneration = (db->getStaticInfo()).getAIEGeneration(mDeviceID);
 
     fout << "HEADER"<<"\n";
     fout << "File Version: " <<fileVersion << "\n";
@@ -49,7 +50,10 @@ namespace xdp {
 
     // Grab AIE clock freq from first counter in metadata
     // NOTE: Assumed the same for all tiles
-    auto aie = (db->getStaticInfo()).getAIECounter(mDeviceIndex, 0);
+    auto aie = (db->getStaticInfo()).getAIECounter(mDeviceID, 0);
+    if (aie == nullptr) {
+      std::cout << "\n\n!!! aie is nullptr how to get clockFreqMhz" << std::endl;
+    }
     double aieClockFreqMhz = (aie != nullptr) ?  aie->clockFreqMhz : 1200.0;
     fout << "Clock frequency (MHz): " << aieClockFreqMhz << "\n";
     fout << "\n"; 
@@ -57,10 +61,13 @@ namespace xdp {
 
   void AIEProfilingWriter::writeMetricSettings()
   {
-    auto metadataReader = (db->getStaticInfo()).getAIEmetadataReader(mDeviceIndex);
+    auto metadataReader = (db->getStaticInfo()).getAIEmetadataReader(mDeviceID);
+    if (metadataReader == nullptr) {
+      std::cout << "!!! metadatareader is null" << std::endl;
+    }
     uint8_t col_shift = metadataReader->getPartitionOverlayStartCols().front();
     std::cout << "!!! writer col shift: " << static_cast<int>(col_shift) << std::endl;
-    auto validConfig = (db->getStaticInfo()).getProfileConfig(mDeviceIndex);
+    auto validConfig = (db->getStaticInfo()).getProfileConfig(mDeviceID);
 
     std::map<module_type, std::vector<std::string>> filteredConfig;
     for(uint8_t i=0; i<static_cast<uint8_t>(module_type::num_types); i++)

@@ -111,8 +111,8 @@ namespace xdp {
 
   bool AieProfile_EdgeImpl::checkAieDevice(const uint64_t deviceId, void* handle)
   {
-    aieDevInst = static_cast<XAie_DevInst*>(db->getStaticInfo().getAieDevInst(fetchAieDevInst, handle)) ;
-    aieDevice  = static_cast<xaiefal::XAieDev*>(db->getStaticInfo().getAieDevice(allocateAieDevice, deallocateAieDevice, handle)) ;
+    aieDevInst = static_cast<XAie_DevInst*>(db->getStaticInfo().getAieDevInst(fetchAieDevInst, handle, deviceId)) ;
+    aieDevice  = static_cast<xaiefal::XAieDev*>(db->getStaticInfo().getAieDevice(allocateAieDevice, deallocateAieDevice, handle, deviceId)) ;
     if (!aieDevInst || !aieDevice) {
       xrt_core::message::send(severity_level::warning, "XRT", 
           "Unable to get AIE device. There will be no AIE profiling.");
@@ -139,7 +139,7 @@ namespace xdp {
         }
         else {
           XAie_DevInst* aieDevInst =
-            static_cast<XAie_DevInst*>(db->getStaticInfo().getAieDevInst(fetchAieDevInst, metadata->getHandle()));
+            static_cast<XAie_DevInst*>(db->getStaticInfo().getAieDevInst(fetchAieDevInst, metadata->getHandle(), metadata->getDeviceID()));
 
           for (auto& counter : counters) {
             tile_type tile;
@@ -310,10 +310,7 @@ namespace xdp {
       for (auto& tileMetric : configMetrics) {
         auto& metricSet  = tileMetric.second;
         auto tile        = tileMetric.first;
-        auto col = tile.col;
-        if (xdp::VPDatabase::Instance()->getStaticInfo().getAppStyle() == xdp::AppStyle::LOAD_XCLBIN_STYLE) {
-          col += startColShift;
-        } 
+        auto col         = tile.col + startColShift;
         auto row         = tile.row;
         auto subtype     = tile.subtype;
         auto type        = aie::getModuleType(row, metadata->getAIETileRowOffset());
@@ -332,12 +329,14 @@ namespace xdp {
             continue;
         }
 
-        auto loc         = XAie_TileLoc(col, row);
-        auto& xaieTile   = aieDevice->tile(col, row);
-
-        if (xdp::VPDatabase::Instance()->getStaticInfo().getAppStyle() == xdp::AppStyle::REGISTER_XCLBIN_STYLE) {
-          col += startColShift;
-        } 
+        // Get the column relative to partition.
+        // For loadxclbin flow currently XRT creates partition of whole device from 0th column.
+        // Hence absolute and relative columns are same.
+        // TODO: For loadxclbin flow XRT will start creating partition of the specified columns,
+        //       hence we should stop adding partition shift to col for passing to XAIE Apis (CR-1244525).
+        auto relCol     = (xdp::VPDatabase::Instance()->getStaticInfo().getAppStyle() == xdp::AppStyle::LOAD_XCLBIN_STYLE) ? col /* startColShift already added */ : tile.col;
+        auto loc        = XAie_TileLoc(relCol, row);
+        auto& xaieTile  = aieDevice->tile(relCol, row);
 
         auto xaieModule  = (mod == XAIE_CORE_MOD) ? xaieTile.core()
                          : ((mod == XAIE_MEM_MOD) ? xaieTile.mem() 

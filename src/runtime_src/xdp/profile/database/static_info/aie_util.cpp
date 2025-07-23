@@ -117,6 +117,40 @@ namespace xdp::aie {
     return nullptr;
   }
 
+  // Snigdha: helper function to print aie_meta
+  void print_ptree(const boost::property_tree::ptree& tree, int level = 0) {
+    std::cout << "\n\n\n!!! Starting tree print in aie_util at level " << level << "..." << std::endl;
+    std::cout << "!!! Tree size: " << tree.size() << std::endl;
+        
+    for (const auto& node : tree) {
+    // Try to access node.first
+    try {
+        std::cout << std::string(level * 2, ' ');
+        std::cout << node.first << ": ";
+    } catch (const std::exception& e) {
+        std::cerr << "!!! Exception while accessing node.first: " << e.what() << std::endl;
+        continue; // Skip to next node
+    } catch (...) {
+        std::cerr << "!!! Unknown exception while accessing node.first." << std::endl;
+        continue;
+    }
+
+    // Try to access node.second
+    try {
+        if (node.second.empty()) {
+        std::cout << node.second.get_value<std::string>() << std::endl;
+        } else {
+        std::cout << std::endl;
+        print_ptree(node.second, level + 1);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "!!! Exception while accessing node.second: " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "!!! Unknown exception while accessing node.second." << std::endl;
+    }
+    }
+  }
+
   // *****************************************************************
   // Parsing functions that are the same for all formats, or just have
   // different roots.
@@ -126,6 +160,7 @@ namespace xdp::aie {
   int getHardwareGeneration(const boost::property_tree::ptree& aie_meta,
                           const std::string& root)
   {
+    // print_ptree(aie_meta); // debug what aie_meta is
     static std::optional<int> hwGen;
     if (!hwGen.has_value()) {
       hwGen = aie_meta.get_child(root).get_value<int>();

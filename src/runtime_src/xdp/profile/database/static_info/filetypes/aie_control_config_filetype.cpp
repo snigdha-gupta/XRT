@@ -45,6 +45,41 @@ AIEControlConfigFiletype::getDriverConfig() const
     return xdp::aie::getDriverConfig(aie_meta, "aie_metadata.driver_config");
 }
 
+/*
+void AIEControlConfigFiletype::print_ptree(const boost::property_tree::ptree& tree, int level) const {
+    std::cout << "\n\n\n!!! Starting tree print in aie_control at level " << level << "..." << std::endl;
+    std::cout << "!!! Tree size: " << tree.size() << std::endl;
+        
+    for (const auto& node : tree) {
+    // Try to access node.first
+    try {
+        std::cout << std::string(level * 2, ' ');
+        std::cout << node.first << ": ";
+    } catch (const std::exception& e) {
+        std::cerr << "!!! Exception while accessing node.first: " << e.what() << std::endl;
+        continue; // Skip to next node
+    } catch (...) {
+        std::cerr << "!!! Unknown exception while accessing node.first." << std::endl;
+        continue;
+    }
+
+    // Try to access node.second
+    try {
+        if (node.second.empty()) {
+        std::cout << node.second.get_value<std::string>() << std::endl;
+        } else {
+        std::cout << std::endl;
+        print_ptree(node.second, level + 1);
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "!!! Exception while accessing node.second: " << e.what() << std::endl;
+    } catch (...) {
+        std::cerr << "!!! Unknown exception while accessing node.second." << std::endl;
+    }
+    }
+}
+*/
+
 int 
 AIEControlConfigFiletype::getHardwareGeneration() const
 {

@@ -71,24 +71,13 @@ namespace xdp {
     return AieProfilePlugin::live;
   }
 
-  uint64_t AieProfilePlugin::getDeviceIDFromHandle(void* handle, bool hw_context_flow)
+  uint64_t AieProfilePlugin::getDeviceIDFromHandle(void* handle)
   {
     auto itr = handleToAIEData.find(handle);
     if (itr != handleToAIEData.end())
       return itr->second.deviceID;
 
     return (db->getStaticInfo()).getXDPUniqueId(handle);
-#if 0
-#ifdef XDP_CLIENT_BUILD
-    (void)(hw_context_flow);
-    return db->addDevice("win_device");
-#else
-    if (hw_context_flow)
-      return db->addDevice("ve2_device"); // Both VE2 and Edge will reach here
-    else
-      return db->addDevice(util::getDebugIpLayoutPath(handle));  // Get the unique device Id. Edge load_xclbin flow 
-#endif
-#endif
   }
 
   void AieProfilePlugin::updateAIEDevice(void* handle, bool hw_context_flow)
@@ -122,14 +111,14 @@ namespace xdp {
     }
 #endif
 
-    auto deviceID = getDeviceIDFromHandle(handle, hw_context_flow);
+    auto deviceID = getDeviceIDFromHandle(handle);
     // Update the static database with information from xclbin
     {
 #ifdef XDP_CLIENT_BUILD
       (db->getStaticInfo()).updateDeviceFromCoreDevice(deviceID, device);
       (db->getStaticInfo()).setDeviceName(deviceID, "win_device");
 #else
-      if (hw_context_flow)
+      if((db->getStaticInfo()).getAppStyle() == xdp::AppStyle::REGISTER_XCLBIN_STYLE)
         (db->getStaticInfo()).updateDeviceFromCoreDevice(deviceID, device);
       else
         (db->getStaticInfo()).updateDeviceFromHandle(deviceID, nullptr, handle);
@@ -199,9 +188,11 @@ auto time = std::time(nullptr);
     timeOss << std::put_time(&tm, "_%Y_%m_%d_%H%M%S");
     std::string timestamp = timeOss.str();
 
+    mIndex = deviceID;
+
     std::string outputFile = "aie_profile_" + deviceName + "_" + std::to_string(deviceID) + timestamp + ".csv";
 
-    VPWriter* writer = new AIEProfilingWriter(outputFile.c_str(), deviceName.c_str(), mIndex);
+    VPWriter* writer = new AIEProfilingWriter(outputFile.c_str(), deviceName.c_str(), mIndex, deviceID);
     writers.push_back(writer);
     db->getStaticInfo().addOpenedFile(writer->getcurrentFileName(), "AIE_PROFILE");
 
@@ -213,14 +204,9 @@ auto time = std::time(nullptr);
       (void)pollMethodPtr;
       AIEData.implementation->startPoll(mIndex, handle);
       xrt_core::message::send(severity_level::warning, "XRT", "After returning from Impl startPoll");
-      #if 0
-        auto device_thread = std::thread(pollMethodPtr, AIEData.implementation, mIndex, handle);
-        AIEData.thread = std::move(device_thread);
-        xrt_core::message::send(severity_level::warning, "XRT", "New AIEProfileImpl poll thread started.");
-      #endif
   #endif
 
-     ++mIndex;
+    //  ++mIndex;
 
   }
 

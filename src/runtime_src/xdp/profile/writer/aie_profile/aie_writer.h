@@ -26,7 +26,7 @@ namespace xdp {
   {
   public:
     AIEProfilingWriter(const char* fileName, const char* deviceName, 
-                       uint64_t deviceIndex);
+                       uint64_t deviceIndex, uint64_t deviceID);
     ~AIEProfilingWriter() = default;
 
     virtual void writerDataColumnHeader();
@@ -38,6 +38,7 @@ namespace xdp {
     std::string mDeviceName;
     uint64_t mDeviceIndex;
     bool mHeaderWritten;
+    uint64_t mDeviceID;
   };
 
 } // end namespace xdp

@@ -53,8 +53,8 @@ namespace xdp {
     , runSummary(nullptr)
     , systemDiagram("")
     , softwareEmulationDeviceName("default_sw_emu_device")
-    , aieDevInst(nullptr)
-    , aieDevice(nullptr)
+    // , aieDevInst(nullptr)
+    // , aieDevice(nullptr)
     , deallocateAieDevice(nullptr)
   {
 #ifdef _WIN32
@@ -69,9 +69,13 @@ namespace xdp {
     if (runSummary != nullptr)
       runSummary->write(false);
 
-    // AIE specific functions
-    if (aieDevice != nullptr && deallocateAieDevice != nullptr)
-      deallocateAieDevice(aieDevice);
+    // // AIE specific functions
+    // if (aieDevice != nullptr && deallocateAieDevice != nullptr)
+    //   deallocateAieDevice(aieDevice);
+    for(auto& aieDevice : aieDevices) {
+      if (aieDevice.second != nullptr && deallocateAieDevice != nullptr)
+        deallocateAieDevice(aieDevice.second);
+    }
   }
 
   // ***********************************************************************
@@ -1251,29 +1255,45 @@ namespace xdp {
   }
 
   void* VPStaticDatabase::getAieDevInst(std::function<void* (void*)> fetch,
-                                        void* devHandle)
+                                        void* devHandle, uint64_t deviceID)
   {
     std::lock_guard<std::mutex> lock(aieLock) ;
-    if (aieDevInst)
-      return aieDevInst ;
+    // if (aieDevInst)
+    //   return aieDevInst ;
 
-    aieDevInst = fetch(devHandle) ;
-    return aieDevInst ;
+    // aieDevInst = fetch(devHandle) ;
+    // return aieDevInst ;
+
+    if(aieDeviceInstances.find(deviceID) != aieDeviceInstances.end())
+      return aieDeviceInstances[deviceID] ;
+
+    auto aieDevInst = fetch(devHandle) ;
+    return aieDeviceInstances[deviceID] = aieDevInst;
   }
 
   void* VPStaticDatabase::getAieDevice(std::function<void* (void*)> allocate,
                                        std::function<void (void*)> deallocate,
-                                       void* devHandle)
+                                       void* devHandle, uint64_t deviceID)
   {
     std::lock_guard<std::mutex> lock(aieLock) ;
-    if (aieDevice)
-      return aieDevice;
-    if (!aieDevInst)
-      return nullptr ;
+    // if (aieDevice)
+    //   return aieDevice;
+    // if (!aieDevInst)
+    //   return nullptr ;
+
+    // deallocateAieDevice = deallocate ;
+    // aieDevice = allocate(devHandle) ;
+    // return aieDevice ;
+    
+    if(aieDevices.find(deviceID) != aieDevices.end())
+      return aieDevices[deviceID];
+
+    if(aieDeviceInstances[deviceID] == nullptr)
+      return nullptr;
 
     deallocateAieDevice = deallocate ;
-    aieDevice = allocate(devHandle) ;
-    return aieDevice ;
+    auto aieDevice = allocate(devHandle) ;
+    return aieDevices[deviceID] = aieDevice;
   }
 
   // ************************************************************************
@@ -2532,7 +2552,7 @@ namespace xdp {
     // Look for aie_trace_config first, then check for aie_control_config
     // only if we cannot find it.
     boost::property_tree::ptree aieMetadata;
-    std::unique_ptr<aie::BaseFiletypeImpl> metadataReader;
+    std::unique_ptr<aie::BaseFiletypeImpl> metadataReader = nullptr;
     if (checkDisk) {
       metadataReader =
         aie::readAIEMetadata("aie_trace_config.json", aieMetadata);
@@ -2575,8 +2595,10 @@ namespace xdp {
   VPStaticDatabase::getAIEmetadataReader(uint64_t deviceId) const
   {
     xrt_core::message::send(xrt_core::message::severity_level::info, "XRT", "AIE metadataReader requested");
-    if (metadataReaders.find(deviceId) == metadataReaders.end())
+    if (metadataReaders.find(deviceId) == metadataReaders.end()) {
+      xrt_core::message::send(xrt_core::message::severity_level::debug, "XRT", "AIE metadataReader not present for this device");
       return nullptr;
+    }
   
     return metadataReaders.at(deviceId).get();
   }
