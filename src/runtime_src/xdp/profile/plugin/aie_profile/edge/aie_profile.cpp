@@ -480,7 +480,7 @@ namespace xdp {
                                                startEvent, metricSet, channel);
           // Store counter info in database
           std::string counterName = "AIE Counter " + std::to_string(counterId);
-          (db->getStaticInfo()).addAIECounter(deviceId, counterId, col, row, i,
+          (db->getStaticInfo()).addAIECounter(deviceId, counterId, relCol, row, i,
                 phyStartEvent, phyEndEvent, resetEvent, payload, metadata->getClockFreqMhz(), 
                 metadata->getModuleName(module), counterName, (tile.stream_ids.empty() ? 0 : tile.stream_ids[0]));
           counterId++;
@@ -554,7 +554,8 @@ namespace xdp {
         continue;
 
       std::vector<uint64_t> values;
-      values.push_back(aie->column);
+      auto writerCol = (db->getStaticInfo().getAppStyle() == xdp::AppStyle::LOAD_XCLBIN_STYLE) ? aie->column : aie->column + metadata->getPartitionOverlayStartCols().front() /* need to add shift */ ;
+      values.push_back(writerCol);
       values.push_back(aie::getRelativeRow(aie->row, metadata->getAIETileRowOffset()));
       values.push_back(aie->startEvent);
       values.push_back(aie->endEvent);
