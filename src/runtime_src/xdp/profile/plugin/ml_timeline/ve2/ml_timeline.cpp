@@ -84,7 +84,7 @@ namespace xdp {
     xrt_core::message::send(xrt_core::message::severity_level::debug, "XRT", 
               "Allocated buffer In MLTimelineVE2Impl::updateDevice");
 
-    auto metadataReader = (db->getStaticInfo()).getAIEmetadataReader();
+    auto metadataReader = (db->getStaticInfo()).getAIEmetadataReader(deviceID);
     if (metadataReader) {
       auto activeUCs = metadataReader->getActiveMicroControllers();
       mNumBufSegments = activeUCs.size();

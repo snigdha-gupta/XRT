@@ -311,7 +311,7 @@ namespace xdp {
         mNumTileTraceEvents[m][n] = 0;
     }
 
-    auto metadataReader = (VPDatabase::Instance()->getStaticInfo()).getAIEmetadataReader();
+    auto metadataReader = (VPDatabase::Instance()->getStaticInfo()).getAIEmetadataReader(deviceID);
     if (!metadataReader) {
       if (aie::isDebugVerbosity()) {
         std::stringstream msg;

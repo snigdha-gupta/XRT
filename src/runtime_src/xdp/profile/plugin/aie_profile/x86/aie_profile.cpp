@@ -171,6 +171,25 @@ namespace xdp {
     return true;
   }
 
+  void AieProfile_x86Impl::startPoll(const uint32_t index, void* handle)
+  {
+    xrt_core::message::send(severity_level::debug, "XRT", " In AieProfile_x86Impl::startPoll");
+    thread = new std::thread(&AieProfile_x86Impl::continuePoll, this, index, handle); 
+    xrt_core::message::send(severity_level::debug, "XRT", " In AieProfile_x86Impl::startPoll, after creating thread instance");
+  }
+
+  void AieProfile_x86Impl::continuePoll(const uint32_t index, void* handle)
+  {
+    xrt_core::message::send(severity_level::debug, "XRT", " In AieProfile_x86Impl::continuePoll");
+
+    while (threadCtrlBool) {
+      poll(index, handle);
+      std::this_thread::sleep_for(std::chrono::microseconds(metadata->getPollingIntervalVal()));
+    }
+    //Final Polling Operation
+    poll(index, handle);
+  }
+
   void AieProfile_x86Impl::poll(const uint32_t index, void* handle)
   {
     try {

@@ -36,7 +36,7 @@ namespace xdp {
 
   private:
     virtual void writeAll(bool openNewFiles) override;
-    uint64_t getDeviceIDFromHandle(void* handle, bool hw_context_flow);
+    uint64_t getDeviceIDFromHandle(void* handle);
     void pollAIECounters(const uint32_t index, void* handle);
     void endPoll();
 
@@ -49,8 +49,8 @@ namespace xdp {
       bool valid;
       std::unique_ptr<AieProfileImpl> implementation;
       std::shared_ptr<AieProfileMetadata> metadata;
-      std::atomic<bool> threadCtrlBool;
-      std::thread thread;
+      // std::atomic<bool> threadCtrlBool;
+      // std::thread thread;
 
     };
     std::map<void*, AIEData>  handleToAIEData;

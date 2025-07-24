@@ -70,8 +70,12 @@ namespace xdp {
       runSummary->write(false);
 
     // AIE specific functions
-    if (aieDevice != nullptr && deallocateAieDevice != nullptr)
-      deallocateAieDevice(aieDevice);
+    // if (aieDevice != nullptr && deallocateAieDevice != nullptr)
+    //   deallocateAieDevice(aieDevice);
+    for(auto& aieDevice : aieDevices) {
+      if (aieDevice.second != nullptr && deallocateAieDevice != nullptr)
+        deallocateAieDevice(aieDevice.second);
+    }
   }
 
   // ***********************************************************************
@@ -1276,6 +1280,32 @@ namespace xdp {
     return aieDevice ;
   }
 
+  void* VPStaticDatabase::getAieDevInst(std::function<void* (void*)> fetch,
+                                        void* devHandle, uint64_t deviceId)
+  {
+    std::lock_guard<std::mutex> lock(aieLock) ;
+    if(aieDeviceInstances.find(deviceId) != aieDeviceInstances.end())
+      return aieDeviceInstances[deviceId] ;
+
+    auto aieDevInst = fetch(devHandle) ;
+    return aieDeviceInstances[deviceId] = aieDevInst; ;
+  }
+
+  void* VPStaticDatabase::getAieDevice(std::function<void* (void*)> allocate,
+                                       std::function<void (void*)> deallocate,
+                                       void* devHandle, uint64_t deviceId)
+  {
+    std::lock_guard<std::mutex> lock(aieLock) ;
+    if(aieDevices.find(deviceId) != aieDevices.end())
+      return aieDevices[deviceId];
+    if(aieDeviceInstances[deviceId] == nullptr)
+      return nullptr;
+
+    deallocateAieDevice = deallocate ;
+    auto aieDevice = allocate(devHandle) ;
+    return aieDevices[deviceId] = aieDevice;
+  }
+
   // ************************************************************************
   // ***** Functions for information from a specific xclbin on a device *****
   uint64_t VPStaticDatabase::getNumAM(uint64_t deviceId, XclbinInfo* xclbin)
@@ -2470,7 +2500,7 @@ namespace xdp {
 
     setDeviceNameFromXclbin(deviceId, xrtXclbin);
     if (readAIEdata) {
-      readAIEMetadata(xrtXclbin, clientBuild);
+      readAIEMetadata(deviceId, xrtXclbin, clientBuild);
       setAIEGeneration(deviceId);
     }
 
@@ -2533,20 +2563,27 @@ namespace xdp {
     }
   }
 
-  void VPStaticDatabase::readAIEMetadata(xrt::xclbin xrtXclbin, bool checkDisk)
+  void VPStaticDatabase::readAIEMetadata(uint64_t deviceId, xrt::xclbin xrtXclbin, bool checkDisk)
   {
     // If "checkDisk" is specified, then look on disk only for the files
     // Look for aie_trace_config first, then check for aie_control_config
     // only if we cannot find it.
+    boost::property_tree::ptree aieMetadata;
+    std::unique_ptr<aie::BaseFiletypeImpl> metadataReader;
     if (checkDisk) {
       metadataReader =
         aie::readAIEMetadata("aie_trace_config.json", aieMetadata);
       if (!metadataReader)
         metadataReader =
           aie::readAIEMetadata("aie_control_config.json", aieMetadata);
-      if (!metadataReader)
+      if (!metadataReader) {
         xrt_core::message::send(xrt_core::message::severity_level::debug, "XRT",
                                 "AIE metadata read failed!");
+      } else {
+        xrt_core::message::send(xrt_core::message::severity_level::debug, "XRT",
+                              "AIE metadata read successfully from disk!");
+        metadataReaders.emplace(deviceId, std::move(metadataReader));
+      }
       return;
     }
     
@@ -2562,19 +2599,24 @@ namespace xdp {
         aie::readAIEMetadata(data.first, data.second, aieMetadata);
     }
 
-    if (!metadataReader)
+    if (!metadataReader) {
       xrt_core::message::send(xrt_core::message::severity_level::debug, "XRT",
                               "AIE metadata read failed!");
-    else
+    } else {
       xrt_core::message::send(xrt_core::message::severity_level::debug, "XRT",
                               "AIE metadata read successfully!");
+      metadataReaders.emplace(deviceId, std::move(metadataReader));
+    }
   }
 
   const xdp::aie::BaseFiletypeImpl*
-  VPStaticDatabase::getAIEmetadataReader() const
+  VPStaticDatabase::getAIEmetadataReader(uint64_t deviceId) const
   {
     xrt_core::message::send(xrt_core::message::severity_level::info, "XRT", "AIE metadataReader requested");
-    return metadataReader.get();
+    if (metadataReaders.find(deviceId) == metadataReaders.end())
+      return nullptr;
+
+    return metadataReaders.at(deviceId).get();
   }
 
   void VPStaticDatabase::setAIEGeneration(uint64_t deviceId) {
@@ -2582,11 +2624,11 @@ namespace xdp {
     if (deviceInfo.find(deviceId) == deviceInfo.end())
       return;
 
-    if (!metadataReader)
+    if (!getAIEmetadataReader(deviceId))
       return;
 
     try {
-      auto hwGen = metadataReader->getHardwareGeneration();
+      auto hwGen = metadataReaders[deviceId]->getHardwareGeneration();
       deviceInfo[deviceId]->setAIEGeneration(hwGen);
     } catch(...) {
       return;
@@ -2606,11 +2648,11 @@ namespace xdp {
     if (!xclbin)
       return;
 
-    if (!metadataReader)
+    if (!getAIEmetadataReader(deviceId))
        return;
 
     try {
-      xclbin->aie.clockRateAIEMHz = metadataReader->getAIEClockFreqMHz();
+      xclbin->aie.clockRateAIEMHz = metadataReaders[deviceId]->getAIEClockFreqMHz();
       xrt_core::message::send(xrt_core::message::severity_level::info, "XRT", "read clockRateAIEMHz: "
                                                         + std::to_string(xclbin->aie.clockRateAIEMHz));
     } catch(...) {

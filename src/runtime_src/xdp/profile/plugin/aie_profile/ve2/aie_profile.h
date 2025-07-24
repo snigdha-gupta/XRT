@@ -41,6 +41,8 @@ namespace xdp {
       ~AieProfile_VE2Impl() = default;
 
       void updateDevice();
+      void startPoll(const uint32_t index, void* handle);
+      void continuePoll(const uint32_t index, void* handle);
       void poll(const uint32_t index, void* handle);
       void freeResources();
       bool checkAieDevice(const uint64_t deviceId, void* handle);
