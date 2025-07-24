@@ -335,6 +335,11 @@ namespace xdp {
         // TODO: For loadxclbin flow XRT will start creating partition of the specified columns,
         //       hence we should stop adding partition shift to col for passing to XAIE Apis (CR-1244525).
         auto relCol     = (xdp::VPDatabase::Instance()->getStaticInfo().getAppStyle() == xdp::AppStyle::LOAD_XCLBIN_STYLE) ? col /* startColShift already added */ : tile.col;
+        
+        std::cout << "!!! tile.col: " << tile.col << std::endl;
+        std::cout << "!!! col: " << col << std::endl;
+        std::cout << "!!! relCol: " << relCol << std::endl;
+        
         auto loc        = XAie_TileLoc(relCol, row);
         auto& xaieTile  = aieDevice->tile(relCol, row);
 

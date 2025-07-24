@@ -1228,6 +1228,7 @@ namespace xdp {
    ***************************************************************************/
   const AIEProfileFinalConfig& AieProfileMetadata::getAIEProfileConfig() const
   {
+    // !!! TODO: 
     static const AIEProfileFinalConfig config(configMetrics, configChannel0,
                          configChannel1, metadataReader->getAIETileRowOffset(),
                          bytesTransferConfigMap, latencyConfigMap);
