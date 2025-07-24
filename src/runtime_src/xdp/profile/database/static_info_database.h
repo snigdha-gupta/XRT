@@ -108,6 +108,7 @@ namespace xdp {
     std::mutex aieLock ;
     std::mutex appStyleLock;
     std::mutex hwCtxImplUIDMapLock;
+    std::mutex aieProfileConfigLock;
 
     // AIE device (Supported devices only)
     void* aieDevInst = nullptr ; // XAie_DevInst
@@ -464,8 +465,8 @@ namespace xdp {
     XDP_CORE_EXPORT std::string getCtxInfo(uint64_t deviceId) ;
 
     // Functions to save current valid profile config
-    XDP_CORE_EXPORT inline void saveProfileConfig(const AIEProfileFinalConfig& cfg, uint64_t deviceId) { aieProfileConfigs[deviceId]=cfg; }
-    XDP_CORE_EXPORT inline const AIEProfileFinalConfig& getProfileConfig(uint64_t deviceId) { return aieProfileConfigs[deviceId]; }
+    XDP_CORE_EXPORT void saveProfileConfig(const AIEProfileFinalConfig& cfg, uint64_t deviceId) ;
+    XDP_CORE_EXPORT const AIEProfileFinalConfig& getProfileConfig(uint64_t deviceId) ;
   } ;
 
 }
