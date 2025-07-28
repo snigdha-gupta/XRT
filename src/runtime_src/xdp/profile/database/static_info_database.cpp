@@ -1255,32 +1255,6 @@ namespace xdp {
   }
 
   void* VPStaticDatabase::getAieDevInst(std::function<void* (void*)> fetch,
-                                        void* devHandle)
-  {
-    std::lock_guard<std::mutex> lock(aieLock) ;
-    if (aieDevInst)
-      return aieDevInst ;
-
-    aieDevInst = fetch(devHandle) ;
-    return aieDevInst ;
-  }
-
-  void* VPStaticDatabase::getAieDevice(std::function<void* (void*)> allocate,
-                                       std::function<void (void*)> deallocate,
-                                       void* devHandle)
-  {
-    std::lock_guard<std::mutex> lock(aieLock) ;
-    if (aieDevice)
-      return aieDevice;
-    if (!aieDevInst)
-      return nullptr ;
-
-    deallocateAieDevice = deallocate ;
-    aieDevice = allocate(devHandle) ;
-    return aieDevice ;
-  }
-
-  void* VPStaticDatabase::getAieDevInst(std::function<void* (void*)> fetch,
                                         void* devHandle, uint64_t deviceId)
   {
     std::lock_guard<std::mutex> lock(aieLock) ;

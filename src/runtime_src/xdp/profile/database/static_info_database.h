@@ -397,16 +397,10 @@ namespace xdp {
     XDP_CORE_EXPORT uint64_t getNumAIETraceStream(uint64_t deviceId) ;
 
     XDP_CORE_EXPORT void* getAieDevInst(std::function<void* (void*)> fetch,
-                                   void* devHandle) ;
+                                   void* devHandle, uint64_t deviceId = 0) ;
     XDP_CORE_EXPORT void* getAieDevice(std::function<void* (void*)> allocate,
                                   std::function<void (void*)> deallocate,
-                                  void* devHandle) ;
-
-    XDP_CORE_EXPORT void* getAieDevInst(std::function<void* (void*)> fetch,
-                                   void* devHandle, uint64_t deviceId) ;
-    XDP_CORE_EXPORT void* getAieDevice(std::function<void* (void*)> allocate,
-                                  std::function<void (void*)> deallocate,
-                                  void* devHandle, uint64_t deviceId) ;
+                                  void* devHandle, uint64_t deviceId = 0) ;
 
     XDP_CORE_EXPORT void readAIEMetadata(uint64_t deviceId, xrt::xclbin xrtXclbin, bool checkDisk);
     XDP_CORE_EXPORT const aie::BaseFiletypeImpl* getAIEmetadataReader(uint64_t deviceId) const;
