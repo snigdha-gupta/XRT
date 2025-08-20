@@ -46,6 +46,8 @@ namespace xdp {
     virtual void endPoll() = 0;
 
     virtual void freeResources() = 0;
+
+    uint64_t getDeviceID() const { return deviceID; }
   };
 
 } // namespace xdp
