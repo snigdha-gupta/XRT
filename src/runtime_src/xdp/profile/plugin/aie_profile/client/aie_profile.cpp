@@ -40,10 +40,10 @@ namespace xdp {
   using module_type = xdp::module_type;
 
   AieProfile_WinImpl::AieProfile_WinImpl(VPDatabase* database,
-    std::shared_ptr<AieProfileMetadata> metadata,
+    std::unique_ptr<AieProfileMetadata> metadata,
     uint64_t deviceID
   )
-    : AieProfileImpl(database, metadata, deviceID)
+    : AieProfileImpl(database, std::move(metadata), deviceID)
   {
     auto hwGen = metadata->getHardwareGen();
 

@@ -59,8 +59,8 @@ namespace xdp {
   using module_type = xdp::module_type;
   using severity_level = xrt_core::message::severity_level;
 
-  AieProfile_VE2Impl::AieProfile_VE2Impl(VPDatabase* database, std::shared_ptr<AieProfileMetadata> metadata, uint64_t deviceID)
-      : AieProfileImpl(database, metadata, deviceID)
+  AieProfile_VE2Impl::AieProfile_VE2Impl(VPDatabase* database, std::unique_ptr<AieProfileMetadata> metadata, uint64_t deviceID)
+      : AieProfileImpl(database, std::move(metadata), deviceID)
   {
     auto hwGen = metadata->getHardwareGen();
 

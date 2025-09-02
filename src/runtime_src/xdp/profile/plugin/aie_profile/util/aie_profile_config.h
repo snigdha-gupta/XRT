@@ -62,7 +62,7 @@ namespace xdp::aie::profile {
    */
   std::shared_ptr<xaiefal::XAiePerfCounter>
   configProfileAPICounters(XAie_DevInst* aieDevInst, xaiefal::XAieDev* aieDevice,
-                           std::shared_ptr<AieProfileMetadata> metadata,
+                           AieProfileMetadata* metadata,
                            xaiefal::XAieMod& xaieModule, XAie_ModuleType& xaieModType, 
                            const module_type xdpModType, const std::string& metricSet, 
                            XAie_Events startEvent, XAie_Events endEvent, 
@@ -113,7 +113,7 @@ namespace xdp::aie::profile {
    */
   std::pair<int, XAie_Events>
   getShimBroadcastChannel(xaiefal::XAieDev* aieDevice, const tile_type& srcTile, const tile_type& destTile,
-                          std::shared_ptr<AieProfileMetadata> metadata,
+                          AieProfileMetadata* metadata,
                           std::vector<std::shared_ptr<xaiefal::XAieBroadcast>>& bcResourcesLatency,
                           std::map<std::string, std::pair<int, XAie_Events>>& adfAPIBroadcastEventsMap);
 
@@ -127,13 +127,13 @@ namespace xdp::aie::profile {
    */
   std::pair<int, XAie_Events>
   setupBroadcastChannel(xaiefal::XAieDev* aieDevice, const tile_type& currTileLoc, 
-                        std::shared_ptr<AieProfileMetadata> metadata,
+                        AieProfileMetadata* metadata,
                         std::vector<std::shared_ptr<xaiefal::XAieBroadcast>>& bcResourcesLatency,
                         std::map<std::string, std::pair<int, XAie_Events>>& adfAPIBroadcastEventsMap);
   
    std::pair<int, XAie_Events>
    getSetBroadcastChannel(xaiefal::XAieDev* aieDevice, const tile_type& currTileLoc, 
-                          std::shared_ptr<AieProfileMetadata> metadata,
+                          AieProfileMetadata* metadata,
                           std::vector<std::shared_ptr<xaiefal::XAieBroadcast>>& bcResourcesLatency,
                           std::map<std::string, std::pair<int, XAie_Events>>& adfAPIBroadcastEventsMap);
 
@@ -159,7 +159,7 @@ namespace xdp::aie::profile {
    */
   std::shared_ptr<xaiefal::XAiePerfCounter>
   configInterfaceLatency(XAie_DevInst* aieDevInst, xaiefal::XAieDev* aieDevice,
-                         std::shared_ptr<AieProfileMetadata> metadata,
+                         AieProfileMetadata* metadata,
                          xaiefal::XAieMod& xaieModule, XAie_ModuleType& xaieModType, 
                          const module_type xdpModType, const std::string& metricSet, 
                          XAie_Events startEvent, XAie_Events endEvent, XAie_Events resetEvent, 
@@ -183,7 +183,7 @@ namespace xdp::aie::profile {
    */
    bool 
    configGraphIteratorAndBroadcast(XAie_DevInst* aieDevInst, xaiefal::XAieDev* aieDevice,
-                                   std::shared_ptr<AieProfileMetadata> metadata,
+                                   AieProfileMetadata* metadata,
                                    xaiefal::XAieMod core, XAie_LocType loc, 
                                    const XAie_ModuleType xaieModType, const module_type xdpModType, 
                                    const std::string metricSet, XAie_Events& bcEvent,
@@ -214,7 +214,7 @@ namespace xdp::aie::profile {
    * @param bcResourcesBytesTx vector of broadcast channels
    */
    void configEventBroadcast(XAie_DevInst* aieDevInst, xaiefal::XAieDev* aieDevice,
-                             std::shared_ptr<AieProfileMetadata> metadata,
+                             AieProfileMetadata* metadata,
                              const XAie_LocType loc, const module_type xdpModType, 
                              const std::string metricSet, const XAie_ModuleType xaieModType, 
                              const XAie_Events bcEvent, XAie_Events& bcChannelEvent,

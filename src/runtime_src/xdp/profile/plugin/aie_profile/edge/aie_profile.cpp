@@ -76,8 +76,8 @@ namespace xdp {
   using module_type = xdp::module_type;
   using severity_level = xrt_core::message::severity_level;
 
-  AieProfile_EdgeImpl::AieProfile_EdgeImpl(VPDatabase* database, std::shared_ptr<AieProfileMetadata> metadata, uint64_t deviceID)
-      : AieProfileImpl(database, metadata, deviceID)
+  AieProfile_EdgeImpl::AieProfile_EdgeImpl(VPDatabase* database, std::unique_ptr<AieProfileMetadata> metadata, uint64_t deviceID)
+      : AieProfileImpl(database, std::move(metadata), deviceID)
   {
     auto hwGen = metadata->getHardwareGen();
 
@@ -373,7 +373,7 @@ namespace xdp {
         if (metadata->getUseGraphIterator() && !graphItrBroadcastConfigDone) {
           XAie_Events bcEvent = XAIE_EVENT_NONE_CORE;
           bool status = aie::profile::configGraphIteratorAndBroadcast(aieDevInst, aieDevice,
-              metadata, xaieModule, loc, mod, type, metricSet, bcEvent, bcResourcesBytesTx);
+              metadata.get(), xaieModule, loc, mod, type, metricSet, bcEvent, bcResourcesBytesTx);
           if (status) {
             graphIteratorBrodcastChannelEvent = bcEvent;
             graphItrBroadcastConfigDone = true;
@@ -423,7 +423,7 @@ namespace xdp {
               continue;
             
             XAie_Events retCounterEvent = XAIE_EVENT_NONE_CORE;
-            perfCounter = aie::profile::configProfileAPICounters(aieDevInst, aieDevice, metadata, xaieModule, 
+            perfCounter = aie::profile::configProfileAPICounters(aieDevInst, aieDevice, metadata.get(), xaieModule, 
                             mod, type, metricSet, startEvent, endEvent, resetEvent, i, perfCounters.size(),
                             threshold, retCounterEvent, tile, bcResourcesLatency, adfAPIResourceInfoMap, adfAPIBroadcastEventsMap);
           }

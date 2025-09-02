@@ -8,6 +8,7 @@
 
 #include "aie_profile_metadata.h"
 #include "xdp/profile/plugin/vp_base/vp_base_plugin.h"
+#include "xdp/profile/plugin/aie_profile/aie_profile_metadata.h"
 
 namespace xdp {
 
@@ -21,15 +22,15 @@ namespace xdp {
 
   protected:
     VPDatabase* db = nullptr;
-    std::shared_ptr<AieProfileMetadata> metadata;
+    std::unique_ptr<AieProfileMetadata> metadata;
     std::atomic<bool> threadCtrl;
     std::unique_ptr<std::thread> thread;
     uint64_t deviceID;
 
   public:
-    AieProfileImpl(VPDatabase* database, std::shared_ptr<AieProfileMetadata> metadata, uint64_t deviceID)
+    AieProfileImpl(VPDatabase* database, std::unique_ptr<AieProfileMetadata> metadata, uint64_t deviceID)
       : db(database),
-        metadata(metadata),
+        metadata(std::move(metadata)),
         threadCtrl(false),
         thread(nullptr),
         deviceID(deviceID)

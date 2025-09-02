@@ -134,30 +134,27 @@ namespace xdp {
 #endif
     auto& AIEData = handleToAIEData[handle];
 
-    // AIEData.deviceID = deviceID;
-    AIEData.metadata = std::make_shared<AieProfileMetadata>(deviceID, handle);
-    if(AIEData.metadata->aieMetadataEmpty())
+    std::unique_ptr<AieProfileMetadata> metadata = std::make_unique<AieProfileMetadata>(deviceID, handle);
+    if (metadata->aieMetadataEmpty())
     {
       AIEData.valid = false;
       xrt_core::message::send(severity_level::debug, "XRT", "AIE Profile : no AIE metadata available for this xclbin update, skipping updateAIEDevice()");
       return;
     }
     AIEData.valid = true;
+    AieProfileMetadata* tmpMetadata = metadata.get();
 
 #ifdef XDP_CLIENT_BUILD
     xrt::hw_context context = xrt_core::hw_context_int::create_hw_context_from_implementation(handle);
-    AIEData.metadata->setHwContext(context);
-    // AIEData.implementation = std::make_unique<AieProfile_WinImpl>(db, AIEData.metadata);
-    AIEData.implementation = std::make_unique<AieProfile_WinImpl>(db, AIEData.metadata, deviceID);
+    metadata->setHwContext(context);
+    tmpMetadata->setHwContext(context);
+    AIEData.implementation = std::make_unique<AieProfile_WinImpl>(db, std::move(metadata), deviceID);
 #elif defined(XRT_X86_BUILD)
-    // AIEData.implementation = std::make_unique<AieProfile_x86Impl>(db, AIEData.metadata);
-    AIEData.implementation = std::make_unique<AieProfile_x86Impl>(db, AIEData.metadata, deviceID);
+    AIEData.implementation = std::make_unique<AieProfile_x86Impl>(db, std::move(metadata), deviceID);
 #elif XDP_VE2_BUILD
-    // AIEData.implementation = std::make_unique<AieProfile_VE2Impl>(db, AIEData.metadata);
-    AIEData.implementation = std::make_unique<AieProfile_VE2Impl>(db, AIEData.metadata, deviceID);
+    AIEData.implementation = std::make_unique<AieProfile_VE2Impl>(db, std::move(metadata), deviceID);
 #else
-    // AIEData.implementation = std::make_unique<AieProfile_EdgeImpl>(db, AIEData.metadata);
-    AIEData.implementation = std::make_unique<AieProfile_EdgeImpl>(db, AIEData.metadata, deviceID);
+    AIEData.implementation = std::make_unique<AieProfile_EdgeImpl>(db, std::move(metadata), deviceID);
 #endif
     auto& implementation = AIEData.implementation;
 
@@ -171,7 +168,7 @@ namespace xdp {
       (db->getStaticInfo()).setIsAIECounterRead(deviceID, true);
     }
 
-    (db->getStaticInfo()).saveProfileConfig(AIEData.metadata->createAIEProfileConfig(), deviceID);
+    (db->getStaticInfo()).saveProfileConfig(tmpMetadata->createAIEProfileConfig(), deviceID);
 
 
 // Open the writer for this device
