@@ -137,11 +137,9 @@ namespace xdp {
     std::unique_ptr<AieProfileMetadata> metadata = std::make_unique<AieProfileMetadata>(deviceID, handle);
     if (metadata->aieMetadataEmpty())
     {
-      AIEData.valid = false;
       xrt_core::message::send(severity_level::debug, "XRT", "AIE Profile : no AIE metadata available for this xclbin update, skipping updateAIEDevice()");
       return;
     }
-    AIEData.valid = true;
     AieProfileMetadata* tmpMetadata = metadata.get();
 
 #ifdef XDP_CLIENT_BUILD
@@ -216,9 +214,6 @@ auto time = std::time(nullptr);
       return;
 
     auto& AIEData = handleToAIEData[handle];
-    if(!AIEData.valid) {
-      return;
-    }
     if (!AIEData.implementation) {
       handleToAIEData.erase(handle);
       return;
