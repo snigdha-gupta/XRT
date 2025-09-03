@@ -54,6 +54,9 @@ namespace xdp {
     // Get polling interval (in usec)
     pollingInterval = xrt_core::config::get_aie_profile_settings_interval_us();
 
+    configSpecificPartition = xrt_core::config::get_aie_profile_settings_config_one_partition();
+    std::cout << "!!! configure specific partition: " << getconfigSpecificPartition() << std::endl;
+
     // Setup Config Metrics
     // Get AIE clock frequency
     clockFreqMhz = (db->getStaticInfo()).getClockRateMHz(deviceID, false);

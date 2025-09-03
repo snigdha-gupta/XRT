@@ -97,6 +97,7 @@ class AieProfileMetadata {
        module_type::mem_tile, module_type::uc};
 
     uint32_t pollingInterval;
+    static bool configSpecificPartition = false;
     uint64_t deviceID;
     double clockFreqMhz;
     void* handle;
@@ -124,6 +125,7 @@ class AieProfileMetadata {
     uint64_t getDeviceID() {return deviceID;}
     void* getHandle() {return handle;}
     uint32_t getPollingIntervalVal() {return pollingInterval;}
+    bool getconfigSpecificPartition() { return configSpecificPartition; }
     void checkSettings();
 
     std::vector<std::string> getSettingsVector(std::string settingsString);
