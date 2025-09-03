@@ -76,8 +76,8 @@ namespace xdp {
   using module_type = xdp::module_type;
   using severity_level = xrt_core::message::severity_level;
 
-  AieProfile_EdgeImpl::AieProfile_EdgeImpl(VPDatabase* database, std::shared_ptr<AieProfileMetadata> metadata)
-      : AieProfileImpl(database, metadata)
+  AieProfile_EdgeImpl::AieProfile_EdgeImpl(VPDatabase* database, std::shared_ptr<AieProfileMetadata> metadata, uint64_t deviceID)
+      : AieProfileImpl(database, metadata, deviceID)
   {
     auto hwGen = metadata->getHardwareGen();
 
@@ -108,10 +108,10 @@ namespace xdp {
   }
 
   void AieProfile_EdgeImpl::updateDevice() {
-      if (!checkAieDevice(metadata->getDeviceID(), metadata->getHandle()))
+      if (!checkAieDevice(deviceID, metadata->getHandle()))
         return;
 
-      bool runtimeCounters = setMetricsSettings(metadata->getDeviceID(), metadata->getHandle());
+      bool runtimeCounters = setMetricsSettings(deviceID, metadata->getHandle());
   
       if (!runtimeCounters) {
         std::shared_ptr<xrt_core::device> device = xrt_core::get_userpf_device(metadata->getHandle());
@@ -120,19 +120,19 @@ namespace xdp {
         if (counters.empty()) {
           xrt_core::message::send(severity_level::warning, "XRT", 
             "AIE Profile Counters were not found for this design. Please specify tile_based_[aie|aie_memory|interface_tile]_metrics under \"AIE_profile_settings\" section in your xrt.ini.");
-          (db->getStaticInfo()).setIsAIECounterRead(metadata->getDeviceID(),true);
+          (db->getStaticInfo()).setIsAIECounterRead(deviceID,true);
           return;
         }
         else {
           XAie_DevInst* aieDevInst =
-            static_cast<XAie_DevInst*>(db->getStaticInfo().getAieDevInst(fetchAieDevInst, metadata->getHandle(), metadata->getDeviceID()));
+            static_cast<XAie_DevInst*>(db->getStaticInfo().getAieDevInst(fetchAieDevInst, metadata->getHandle(), deviceID));
 
           for (auto& counter : counters) {
             tile_type tile;
             auto payload = getCounterPayload(aieDevInst, tile, module_type::core, counter.column, 
                                              counter.row, counter.startEvent, "N/A", 0);
 
-            (db->getStaticInfo()).addAIECounter(metadata->getDeviceID(), counter.id, counter.column,
+            (db->getStaticInfo()).addAIECounter(deviceID, counter.id, counter.column,
                 counter.row, counter.counterNumber, counter.startEvent, counter.endEvent,
                 counter.resetEvent, payload, counter.clockFreqMhz, counter.module, counter.name);
           }
