@@ -73,9 +73,9 @@ namespace xdp {
 
   uint64_t AieProfilePlugin::getDeviceIDFromHandle(void* handle)
   {
-    auto itr = handleToAIEData.find(handle);
-    if (itr != handleToAIEData.end())
-      return itr->second.implementation->getDeviceID();
+    auto itr = handleToAIEImpl.find(handle);
+    if (itr != handleToAIEImpl.end())
+      return itr->second->getDeviceID();
 
     return (db->getStaticInfo()).getDeviceContextUniqueId(handle);
   }
@@ -126,13 +126,12 @@ namespace xdp {
     }
 
     // Delete old data
-    if (handleToAIEData.find(handle) != handleToAIEData.end())
+    if (handleToAIEImpl.find(handle) != handleToAIEImpl.end())
 #ifdef XDP_CLIENT_BUILD
       return;
 #else
-      handleToAIEData.erase(handle);
+      handleToAIEImpl.erase(handle);
 #endif
-    auto& AIEData = handleToAIEData[handle];
 
     std::unique_ptr<AieProfileMetadata> metadata = std::make_unique<AieProfileMetadata>(deviceID, handle);
     if (metadata->aieMetadataEmpty())
@@ -146,22 +145,23 @@ namespace xdp {
     xrt::hw_context context = xrt_core::hw_context_int::create_hw_context_from_implementation(handle);
     metadata->setHwContext(context);
     tmpMetadata->setHwContext(context);
-    AIEData.implementation = std::make_unique<AieProfile_WinImpl>(db, std::move(metadata), deviceID);
+    implementation = std::make_unique<AieProfile_WinImpl>(db, std::move(metadata), deviceID);
 #elif defined(XRT_X86_BUILD)
-    AIEData.implementation = std::make_unique<AieProfile_x86Impl>(db, std::move(metadata), deviceID);
+    implementation = std::make_unique<AieProfile_x86Impl>(db, std::move(metadata), deviceID);
 #elif XDP_VE2_BUILD
-    AIEData.implementation = std::make_unique<AieProfile_VE2Impl>(db, std::move(metadata), deviceID);
+    implementation = std::make_unique<AieProfile_VE2Impl>(db, std::move(metadata), deviceID);
 #else
-    AIEData.implementation = std::make_unique<AieProfile_EdgeImpl>(db, std::move(metadata), deviceID);
+    implementation = std::make_unique<AieProfile_EdgeImpl>(db, std::move(metadata), deviceID);
 #endif
-    auto& implementation = AIEData.implementation;
+    AieProfileImpl* tmpImpl = implementation.get();
+    handleToAIEImpl[handle] = std::move(implementation);
 
 
     // Ensure we only read/configure once per xclbin
     if (!(db->getStaticInfo()).isAIECounterRead(deviceID)) {
       // Sets up and calls the PS kernel on x86 implementation
       // Sets up and the hardware on the edge implementation
-      implementation->updateDevice();
+      tmpImpl->updateDevice();
 
       (db->getStaticInfo()).setIsAIECounterRead(deviceID, true);
     }
@@ -191,40 +191,40 @@ auto time = std::time(nullptr);
     db->getStaticInfo().addOpenedFile(writer->getcurrentFileName(), "AIE_PROFILE");
 
     // Start the AIE profiling thread
-    AIEData.implementation->startPoll(deviceID);
+    tmpImpl->startPoll(deviceID);
   }
 
   void AieProfilePlugin::writeAll(bool /*openNewFiles*/)
   {
     xrt_core::message::send(severity_level::info, "XRT", "Calling AIE Profile writeall.");
 
-    for (const auto& kv : handleToAIEData) {
+    for (const auto& kv : handleToAIEImpl) {
       // End polling thread
       endPollforDevice(kv.first);
     }
 
     XDPPlugin::endWrite();
-    handleToAIEData.clear();
+    handleToAIEImpl.clear();
   }
 
   void AieProfilePlugin::endPollforDevice(void* handle)
   {
     xrt_core::message::send(severity_level::info, "XRT", "Calling AIE Profile endPollForDevice.");
-    if (handleToAIEData.empty())
+    if (handleToAIEImpl.empty())
       return;
 
-    auto& AIEData = handleToAIEData[handle];
-    if (!AIEData.implementation) {
-      handleToAIEData.erase(handle);
+    auto& implementation = handleToAIEImpl[handle];
+    if (!implementation) {
+      handleToAIEImpl.erase(handle);
       return;
     }
       
     #ifdef XDP_CLIENT_BUILD
-      AIEData.implementation->poll(0);
+      implementation->poll(0);
     #endif
 
-    AIEData.implementation->endPoll();
-    handleToAIEData.erase(handle);
+    implementation->endPoll();
+    handleToAIEImpl.erase(handle);
   }
 
   void AieProfilePlugin::endPoll()
@@ -232,15 +232,14 @@ auto time = std::time(nullptr);
     xrt_core::message::send(severity_level::info, "XRT", "Calling AIE Profile endPoll.");
 
     #ifdef XDP_CLIENT_BUILD
-      auto& AIEData = handleToAIEData.begin()->second;
-      AIEData.implementation->poll(0);
+      implementation->poll(0);
     #endif
     // Ask all threads to end
-    for (auto& p : handleToAIEData) {
-      if (p.second.implementation)
-        p.second.implementation->endPoll();
+    for (auto& p : handleToAIEImpl) {
+      if (p.second)
+        p.second->endPoll();
     }
-    handleToAIEData.clear();
+    handleToAIEImpl.clear();
   }
 
   void AieProfilePlugin::broadcast(VPDatabase::MessageType msg, void* /*blob*/)

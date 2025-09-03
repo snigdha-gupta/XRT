@@ -28,14 +28,8 @@ namespace xdp {
 
   private:
     static bool live;
-    struct AIEData {
-      // uint64_t deviceID;
-      bool valid;
-      std::unique_ptr<AieProfileImpl> implementation;
-      // std::shared_ptr<AieProfileMetadata> metadata;
-    };
-    std::map<void*, AIEData>  handleToAIEData;
-    // std::map<void*, std::unique_ptr<AieProfileImpl>>  handleToAIEImpl;
+    std::unique_ptr<AieProfileImpl> implementation;
+    std::map<void*, std::unique_ptr<AieProfileImpl>> handleToAIEImpl;
 
   };
 
