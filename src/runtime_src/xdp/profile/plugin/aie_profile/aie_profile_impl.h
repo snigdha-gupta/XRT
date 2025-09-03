@@ -8,7 +8,6 @@
 
 #include "aie_profile_metadata.h"
 #include "xdp/profile/plugin/vp_base/vp_base_plugin.h"
-#include "xdp/profile/plugin/aie_profile/aie_profile_metadata.h"
 
 namespace xdp {
 

@@ -213,6 +213,7 @@ auto time = std::time(nullptr);
     if (handleToAIEImpl.empty())
       return;
 
+    // TODO: is this null ?
     auto& implementation = handleToAIEImpl[handle];
     if (!implementation) {
       handleToAIEImpl.erase(handle);
