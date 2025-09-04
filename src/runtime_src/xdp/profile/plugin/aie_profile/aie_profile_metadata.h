@@ -97,7 +97,7 @@ class AieProfileMetadata {
        module_type::mem_tile, module_type::uc};
 
     uint32_t pollingInterval;
-    static bool configSpecificPartition = false;
+    inline static bool configSpecificPartition = false;
     uint64_t deviceID;
     double clockFreqMhz;
     void* handle;

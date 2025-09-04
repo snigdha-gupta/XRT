@@ -55,6 +55,9 @@ namespace xdp {
     counterScheme = xrt_core::config::get_aie_trace_settings_counter_scheme();
     // Get polling interval (in usec)
     pollingInterval = xrt_core::config::get_aie_trace_settings_poll_timers_interval_us();
+
+    configSpecificPartition = xrt_core::config::get_aie_trace_settings_config_one_partition();
+    std::cout << "!!! configure specific partition: " << getconfigSpecificPartition() << std::endl;
     
     // Check whether continuous trace is enabled in xrt.ini
     continuousTrace = xrt_core::config::get_aie_trace_settings_periodic_offload();
