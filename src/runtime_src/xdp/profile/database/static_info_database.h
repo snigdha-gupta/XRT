@@ -94,6 +94,10 @@ namespace xdp {
 
     // Map of hwCtxImpl Handle to unique ID to form device UID
     std::map<void*, uint64_t> hwCtxImplUIDMap;
+    
+    // TODO: unique hwctx support
+    static uint64_t nextAvailableUID;
+    std::map<void*, bool> hwCtxImplXclbinValidMap;
 
     // Static info can be accessed via any host thread, so we have
     //  fine grained locks on each of the types of data.
@@ -453,6 +457,10 @@ namespace xdp {
     // Functions to save current valid profile config
     XDP_CORE_EXPORT void saveProfileConfig(std::unique_ptr<const AIEProfileFinalConfig> cfg, uint64_t deviceId) ;
     XDP_CORE_EXPORT const AIEProfileFinalConfig* getProfileConfig(uint64_t deviceId) ;
+
+    const std::map<void*, bool>& getHwCtxImplXclbinValidMap() const ;
+    void setHwCtxImplXclbinValidMap(void* handle, bool val) ;
+    uint64_t getDeviceIDForDuplHwCtxImpl() ;
   } ;
 
 }

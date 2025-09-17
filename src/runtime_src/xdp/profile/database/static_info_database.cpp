@@ -47,6 +47,8 @@ constexpr unsigned int XMON_TRACE_PROPERTY_MASK = 0x1;
 
 namespace xdp {
 
+  uint64_t VPStaticDatabase::nextAvailableUID = 1;
+
   VPStaticDatabase::VPStaticDatabase(VPDatabase* d)
     : db(d)
     , softwareEmulationDeviceName("default_sw_emu_device")
@@ -1620,7 +1622,7 @@ namespace xdp {
   {
     // NOTE: XDP plugins checks for validity of the hwContex Implementation handle
     // before calling this function. So, we don't need to check for validity here.
-    static uint64_t nextAvailableUID = 1;
+    // static uint64_t nextAvailableUID = 1;
     {
       std::lock_guard<std::mutex> lock(hwCtxImplUIDMapLock);
       auto it  = hwCtxImplUIDMap.find(hwCtxImpl);
@@ -1649,6 +1651,24 @@ namespace xdp {
        hwCtxImplUIDMap[hwCtxImpl] =  nextAvailableUID++;
     }
     return hwCtxImplUIDMap[hwCtxImpl];
+  }
+
+  const std::map<void*, bool>& VPStaticDatabase::getHwCtxImplXclbinValidMap() const 
+  { 
+    return hwCtxImplXclbinValidMap; 
+  }
+
+  void VPStaticDatabase::setHwCtxImplXclbinValidMap(void* handle, bool val) 
+  { 
+    hwCtxImplXclbinValidMap[handle] = val; 
+  }
+
+  uint64_t VPStaticDatabase::getDeviceIDForDuplHwCtxImpl()
+  {
+    // TODO: if any validity checks need to be done before here
+    // TODO: how can we add multiple IDs with same hwctximpl? (check this funcition)
+    // db->associateContextWithId(nextAvailableUID, hwCtxImpl);
+    return nextAvailableUID++;
   }
 
   uint64_t VPStaticDatabase::getDeviceContextUniqueId(void* handle)
