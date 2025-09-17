@@ -114,14 +114,10 @@ namespace xdp {
     auto deviceID = getDeviceIDFromHandle(handle);
     
     std::cout << "!!! deviceID before: " << deviceID << std::endl;
-    auto& validMap = (db->getStaticInfo()).getHwCtxImplXclbinValidMap();
-    auto it = validMap.find(handle);
-    if (it != validMap.end() && it->second == 0) {
+    auto& prevSeenHwCtxImpl = (db->getStaticInfo()).getPrevSeenHwCtxImpl();
+    if (prevSeenHwCtxImpl.find(handle) != prevSeenHwCtxImpl.end()) {
       // have to change deviceID since this will be same (can run a confirmation check here)
-      deviceID = (db->getStaticInfo()).getDeviceIDForDuplHwCtxImpl();
-    } else {
-      // also add deviceID to the map
-      (db->getStaticInfo()).setHwCtxImplXclbinValidMap(handle, 1);
+      deviceID = (db->getStaticInfo()).getDeviceIDForDuplHwCtxImpl(handle);
     } 
     std::cout << "!!! deviceID after: " << deviceID << std::endl;
 
@@ -243,8 +239,7 @@ auto time = std::time(nullptr);
     AIEData.implementation->endPoll();
     handleToAIEData.erase(handle);
     
-    // TODO: set handle invalid here
-    (db->getStaticInfo()).setHwCtxImplXclbinValidMap(handle, 0);
+    (db->getStaticInfo()).addHwCtxImplToPrevSeenHwCtxImpl(handle);
   }
 
   void AieProfilePlugin::endPoll()

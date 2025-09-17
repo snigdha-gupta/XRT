@@ -1653,21 +1653,10 @@ namespace xdp {
     return hwCtxImplUIDMap[hwCtxImpl];
   }
 
-  const std::map<void*, bool>& VPStaticDatabase::getHwCtxImplXclbinValidMap() const 
-  { 
-    return hwCtxImplXclbinValidMap; 
-  }
-
-  void VPStaticDatabase::setHwCtxImplXclbinValidMap(void* handle, bool val) 
-  { 
-    hwCtxImplXclbinValidMap[handle] = val; 
-  }
-
-  uint64_t VPStaticDatabase::getDeviceIDForDuplHwCtxImpl()
+  uint64_t VPStaticDatabase::getDeviceIDForDuplHwCtxImpl(void* handle)
   {
     // TODO: if any validity checks need to be done before here
-    // TODO: how can we add multiple IDs with same hwctximpl? (check this funcition)
-    // db->associateContextWithId(nextAvailableUID, hwCtxImpl);
+    db->associateContextWithId(nextAvailableUID, handle);
     return nextAvailableUID++;
   }
 
