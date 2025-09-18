@@ -124,6 +124,7 @@ void AieTracePluginUnified::updateAIEDevice(void *handle, bool hw_context_flow) 
     handleToAIEData.erase(handle);
 
   auto deviceID = getDeviceIDFromHandle(handle);
+  std::cout << "!!! trace deviceID: " << deviceID << std::endl;
 
   // Setting up struct
   auto &AIEData = handleToAIEData[handle];

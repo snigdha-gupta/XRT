@@ -47,8 +47,6 @@ constexpr unsigned int XMON_TRACE_PROPERTY_MASK = 0x1;
 
 namespace xdp {
 
-  uint64_t VPStaticDatabase::nextAvailableUID = 1;
-
   VPStaticDatabase::VPStaticDatabase(VPDatabase* d)
     : db(d)
     , softwareEmulationDeviceName("default_sw_emu_device")
@@ -1622,12 +1620,13 @@ namespace xdp {
   {
     // NOTE: XDP plugins checks for validity of the hwContex Implementation handle
     // before calling this function. So, we don't need to check for validity here.
-    // static uint64_t nextAvailableUID = 1;
+    static uint64_t nextAvailableUID = 1;
     {
       std::lock_guard<std::mutex> lock(hwCtxImplUIDMapLock);
       auto it  = hwCtxImplUIDMap.find(hwCtxImpl);
-      if (it != hwCtxImplUIDMap.end())
-        return it->second;
+      if (it != hwCtxImplUIDMap.end() && it->second.second) { // check if valid
+        return it->second.first; // return UID
+      }
     }
 
     auto device = util::convertToCoreDevice(hwCtxImpl, true);
@@ -1638,7 +1637,7 @@ namespace xdp {
     std::lock_guard<std::mutex> lock(hwCtxImplUIDMapLock);
     if ((loadedXclbinType == XclbinInfoType::XCLBIN_PL_ONLY) ||
         (loadedXclbinType == XclbinInfoType::XCLBIN_AIE_PL)) {
-      hwCtxImplUIDMap[hwCtxImpl] = DEFAULT_PL_DEVICE_ID; // For PL_ONLY and AIE_PL xclbins, use 0 deviceId.
+      hwCtxImplUIDMap[hwCtxImpl] = std::make_pair(DEFAULT_PL_DEVICE_ID, true); // For PL_ONLY and AIE_PL xclbins, use 0 deviceId.
 
       // At this point, also keep track of which xclbin is associated
       // with this hardware context implementation for the run summary file
@@ -1648,16 +1647,9 @@ namespace xdp {
        // with this hardware context implementation for the run summary file
        db->associateContextWithId(nextAvailableUID, hwCtxImpl);
        
-       hwCtxImplUIDMap[hwCtxImpl] =  nextAvailableUID++;
+       hwCtxImplUIDMap[hwCtxImpl] = std::make_pair(nextAvailableUID++, true); ;
     }
-    return hwCtxImplUIDMap[hwCtxImpl];
-  }
-
-  uint64_t VPStaticDatabase::getDeviceIDForDuplHwCtxImpl(void* handle)
-  {
-    // TODO: if any validity checks need to be done before here
-    db->associateContextWithId(nextAvailableUID, handle);
-    return nextAvailableUID++;
+    return hwCtxImplUIDMap[hwCtxImpl].first;
   }
 
   uint64_t VPStaticDatabase::getDeviceContextUniqueId(void* handle)

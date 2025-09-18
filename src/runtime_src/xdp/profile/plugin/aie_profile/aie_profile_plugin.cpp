@@ -112,15 +112,7 @@ namespace xdp {
 #endif
 
     auto deviceID = getDeviceIDFromHandle(handle);
-    
-    std::cout << "!!! deviceID before: " << deviceID << std::endl;
-    auto& prevSeenHwCtxImpl = (db->getStaticInfo()).getPrevSeenHwCtxImpl();
-    if (prevSeenHwCtxImpl.find(handle) != prevSeenHwCtxImpl.end()) {
-      // have to change deviceID since this will be same (can run a confirmation check here)
-      deviceID = (db->getStaticInfo()).getDeviceIDForDuplHwCtxImpl(handle);
-    } 
-    std::cout << "!!! deviceID after: " << deviceID << std::endl;
-
+    std::cout << "!!! profile deviceID: " << deviceID << std::endl;
     // Update the static database with information from xclbin
     {
 #ifdef XDP_CLIENT_BUILD
@@ -239,7 +231,7 @@ auto time = std::time(nullptr);
     AIEData.implementation->endPoll();
     handleToAIEData.erase(handle);
     
-    (db->getStaticInfo()).addHwCtxImplToPrevSeenHwCtxImpl(handle);
+    (db->getStaticInfo()).markHwCtxImplAsInvalid(handle);
   }
 
   void AieProfilePlugin::endPoll()

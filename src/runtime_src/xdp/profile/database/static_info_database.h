@@ -93,11 +93,10 @@ namespace xdp {
     std::map<uint64_t, std::unique_ptr<DeviceInfo>> deviceInfo;
 
     // Map of hwCtxImpl Handle to unique ID to form device UID
-    std::map<void*, uint64_t> hwCtxImplUIDMap;
-    
-    // TODO: unique hwctx support
-    static uint64_t nextAvailableUID;
-    std::set<void*> prevSeenHwCtxImpl;
+    // std::map<void*, uint64_t> hwCtxImplUIDMap;
+    // std::map<void*, bool> prevSeenHwCtxImpl;
+    std::map<void*, std::pair<uint64_t, bool>> hwCtxImplUIDMap;
+    // pair.first = UID, pair.second = isValid flag
 
     // Static info can be accessed via any host thread, so we have
     //  fine grained locks on each of the types of data.
@@ -458,9 +457,13 @@ namespace xdp {
     XDP_CORE_EXPORT void saveProfileConfig(std::unique_ptr<const AIEProfileFinalConfig> cfg, uint64_t deviceId) ;
     XDP_CORE_EXPORT const AIEProfileFinalConfig* getProfileConfig(uint64_t deviceId) ;
 
-    const std::set<void*>& getPrevSeenHwCtxImpl() const { return prevSeenHwCtxImpl; } ;
-    void addHwCtxImplToPrevSeenHwCtxImpl(void* handle) { prevSeenHwCtxImpl.insert(handle); } ;
-    uint64_t getDeviceIDForDuplHwCtxImpl(void* handle) ;
+    void markHwCtxImplAsInvalid(void* handle) 
+    { 
+      auto it = hwCtxImplUIDMap.find(handle);
+      if (it != hwCtxImplUIDMap.end()) {
+        it->second.second = false; // Mark as invalid
+      }
+    } 
   } ;
 
 }
