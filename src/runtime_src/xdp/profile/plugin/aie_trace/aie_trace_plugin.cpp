@@ -388,6 +388,7 @@ void AieTracePluginUnified::finishFlushAIEDevice(void *handle) {
   XDPPlugin::endWrite();
 
   handleToAIEData.erase(itr);
+  (db->getStaticInfo()).markHwCtxImplAsInvalid(handle);
 }
 
 void AieTracePluginUnified::writeAll(bool openNewFiles) {
