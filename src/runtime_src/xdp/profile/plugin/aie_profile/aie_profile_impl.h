@@ -24,16 +24,21 @@ namespace xdp {
     std::shared_ptr<AieProfileMetadata> metadata;
     std::atomic<bool> threadCtrl;
     std::unique_ptr<std::thread> thread;
+    uint64_t deviceID;
 
   public:
-    AieProfileImpl(VPDatabase* database, std::shared_ptr<AieProfileMetadata> metadata)
+    AieProfileImpl(VPDatabase* database, std::shared_ptr<AieProfileMetadata> metadata, uint64_t id)
       : db(database),
         metadata(metadata),
         threadCtrl(false),
-        thread(nullptr)
+        thread(nullptr),
+        deviceID(id)
     {}
 
     AieProfileImpl() = delete;
+
+    uint64_t getDeviceID() { return deviceID; }
+
     virtual ~AieProfileImpl() {};
 
     virtual void updateDevice() = 0;
