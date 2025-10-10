@@ -1,6 +1,6 @@
 /**
  * Copyright (C) 2020-2022 Xilinx, Inc
- * Copyright (C) 2022-2024 Advanced Micro Devices, Inc. - All rights reserved
+ * Copyright (C) 2022-2025 Advanced Micro Devices, Inc. - All rights reserved
  *
  * Licensed under the Apache License, Version 2.0 (the "License"). You may
  * not use this file except in compliance with the License. A copy of the
@@ -120,10 +120,8 @@ namespace xdp {
     }
   }
 
-  void PLDeviceOffloadPlugin::addDevice(const std::string& sysfsPath)
+  void PLDeviceOffloadPlugin::createWriters(uint64_t deviceId)
   {
-    uint64_t deviceId = db->addDevice(sysfsPath) ;
-
     if (!device_trace)
         return;
     
@@ -143,7 +141,7 @@ namespace xdp {
                                              xrtVersion,
                                              toolVersion);
     writers.push_back(writer);
-    (db->getStaticInfo()).addOpenedFile(writer->getcurrentFileName(), "VP_TRACE") ;
+    db->addOpenedFile(writer->getcurrentFileName(), "VP_TRACE") ;
 
     if (continuous_trace)
       XDPPlugin::startWriteThread(XDPPlugin::get_trace_file_dump_int_s(), "VP_TRACE");

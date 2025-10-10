@@ -37,7 +37,6 @@
 #include "xdp/profile/device/pl_device_intf.h"
 #include "xdp/profile/device/utility.h"
 #include "xdp/profile/plugin/vp_base/utility.h"
-#include "xdp/profile/writer/vp_base/vp_run_summary.h"
 
 #include "core/common/query_requests.h"
 #include "core/include/xrt/xrt_uuid.h"
@@ -50,8 +49,6 @@ namespace xdp {
 
   VPStaticDatabase::VPStaticDatabase(VPDatabase* d)
     : db(d)
-    , runSummary(nullptr)
-    , systemDiagram("")
     , softwareEmulationDeviceName("default_sw_emu_device")
     , deallocateAieDevice(nullptr)
   {
@@ -60,13 +57,16 @@ namespace xdp {
 #else
     pid = static_cast<int>(getpid()) ;
 #endif
+
+    // During initialization, call the utility function isEdge()
+    // just to initialize static variables, so later other functions
+    // will not have to call the xrt::system_linux queries when
+    // they might have been destroyed
+    (void)(isEdge()); 
   }
 
   VPStaticDatabase::~VPStaticDatabase()
   {
-    if (runSummary != nullptr)
-      runSummary->write(false);
-
     for(auto& aieDevice : aieDevices) {
       if (aieDevice.second != nullptr && deallocateAieDevice != nullptr)
         deallocateAieDevice(aieDevice.second);
@@ -239,38 +239,6 @@ namespace xdp {
   {
     std::lock_guard<std::mutex> lock(openCLLock) ;
     softwareEmulationPortBitWidths.push_back(s) ;
-  }
-
-  // ************************************************
-  // ***** Functions related to the run summary *****
-  std::vector<std::pair<std::string, std::string>>&
-  VPStaticDatabase::getOpenedFiles()
-  {
-    std::lock_guard<std::mutex> lock(summaryLock) ;
-    return openedFiles ;
-  }
-
-  void VPStaticDatabase::addOpenedFile(const std::string& name,
-                                       const std::string& type)
-  {
-    {
-      // Protect changes to openedFiles and creation of the run summary.
-      //  The write function, however, needs to query the opened files so
-      //  place the lock inside its own scope.
-      std::lock_guard<std::mutex> lock(summaryLock) ;
-
-      openedFiles.push_back(std::make_pair(name, type)) ;
-
-      if (runSummary == nullptr)
-        runSummary = std::make_unique<VPRunSummaryWriter>("xrt.run_summary", db);
-    }
-    runSummary->write(false) ;
-  }
-
-  std::string VPStaticDatabase::getSystemDiagram()
-  {
-    std::lock_guard<std::mutex> lock(summaryLock) ;
-    return systemDiagram ;
   }
 
   // ***************************************************************
@@ -1269,28 +1237,18 @@ namespace xdp {
 
   uint64_t VPStaticDatabase::getNumAIETraceStream(uint64_t deviceId)
   {
-    uint64_t numAIETraceStream = getNumTracePLIO(deviceId) ;
-    if (numAIETraceStream)
-      return numAIETraceStream ;
-    {
-      // NumTracePLIO also locks the database, so put this lock in its own
-      //  scope after numTracePLIO has returned.
-      std::lock_guard<std::mutex> lock(deviceLock) ;
+    uint64_t numAIETraceStreamPLIO = getNumTracePLIO(deviceId) ;
+    uint64_t numAIETraceStreamGMIO = getNumTraceGMIO(deviceId) ;
+    return numAIETraceStreamPLIO + numAIETraceStreamGMIO ;
+  }
 
-      if (deviceInfo.find(deviceId) == deviceInfo.end())
-        return 0 ;
-
-      ConfigInfo* config = deviceInfo[deviceId]->currentConfig() ;
-      if (!config)
-        return 0 ;
-
-      XclbinInfo* xclbin = config->getAieXclbin();
-      if (!xclbin)
-        return 0;
-
-      auto rc = xclbin->aie.gmioList.size() ;
-      return rc;
-    }
+  uint64_t VPStaticDatabase::getNumAIETraceStream(uint64_t deviceId, io_type ioType)
+  {
+    if (ioType == io_type::PLIO)
+      return getNumTracePLIO(deviceId);
+    // else if (ioType == io_type::GMIO)
+    else
+      return getNumTraceGMIO(deviceId);
   }
 
   void* VPStaticDatabase::getAieDevInst(std::function<void* (void*)> fetch,
@@ -1534,10 +1492,9 @@ namespace xdp {
 
   // ************************************************************************
 
-  bool VPStaticDatabase::validXclbin(void* devHandle)
+  bool VPStaticDatabase::validXclbin(void* devHandle, bool hw_context_flow)
   {
-    std::shared_ptr<xrt_core::device> device =
-      xrt_core::get_userpf_device(devHandle);
+    std::shared_ptr<xrt_core::device> device = util::convertToCoreDevice(devHandle, hw_context_flow);
 
     // If this xclbin was built with tools before the 2019.2 release, we
     //  do not support device profiling.  The XRT version of 2019.2 was 2.5.459
@@ -1684,9 +1641,17 @@ namespace xdp {
     static uint64_t nextAvailableUID = 1;
     {
       std::lock_guard<std::mutex> lock(hwCtxImplUIDMapLock);
-      auto it  = hwCtxImplUIDMap.find(hwCtxImpl);
-      if (it != hwCtxImplUIDMap.end())
-        return it->second;
+      auto it = hwCtxImplUIDMap.find(hwCtxImpl);
+      if (it != hwCtxImplUIDMap.end()) {
+        auto& info = it->second;
+        if (info.isValid()) { // check if valid (non-zero)
+          info.incrementValidity(); // increment by 1 since a new plugin is encountered
+          return info.uid; // return UID
+        }
+        // If we reach here, the entry exists but is invalid (validityCount == 0)
+        // We'll erase it and create a new one below
+        hwCtxImplUIDMap.erase(it);
+      }
     }
 
     auto device = util::convertToCoreDevice(hwCtxImpl, true);
@@ -1697,11 +1662,19 @@ namespace xdp {
     std::lock_guard<std::mutex> lock(hwCtxImplUIDMapLock);
     if ((loadedXclbinType == XclbinInfoType::XCLBIN_PL_ONLY) ||
         (loadedXclbinType == XclbinInfoType::XCLBIN_AIE_PL)) {
-      hwCtxImplUIDMap[hwCtxImpl] = DEFAULT_PL_DEVICE_ID; // For PL_ONLY and AIE_PL xclbins, use 0 deviceId.
+      hwCtxImplUIDMap.emplace(hwCtxImpl, HwContextInfo(DEFAULT_PL_DEVICE_ID, 1)); // For PL_ONLY and AIE_PL xclbins, use 0 deviceId.
+
+      // At this point, also keep track of which xclbin is associated
+      // with this hardware context implementation for the run summary file
+      db->associateContextWithId(DEFAULT_PL_DEVICE_ID, hwCtxImpl);
     } else {
-       hwCtxImplUIDMap[hwCtxImpl] =  nextAvailableUID++;
+       // At this point, also keep track of which xclbin is associated
+       // with this hardware context implementation for the run summary file
+       db->associateContextWithId(nextAvailableUID, hwCtxImpl);
+       
+       hwCtxImplUIDMap.emplace(hwCtxImpl, HwContextInfo(nextAvailableUID++, 1));
     }
-    return hwCtxImplUIDMap[hwCtxImpl];
+    return hwCtxImplUIDMap.at(hwCtxImpl).uid;
   }
 
   uint64_t VPStaticDatabase::getDeviceContextUniqueId(void* handle)
@@ -1715,6 +1688,20 @@ namespace xdp {
     // For REGISTER_XCLBIN_STYLE and APP_STYLE_NOT_SET
     // handle is an HW Ctx Impl pointer
     return getHwCtxImplUid(handle);
+  }
+
+  bool VPStaticDatabase::xclbinContainsPl(void* handle, bool hw_context_flow)
+  {
+    auto device = util::convertToCoreDevice(handle, hw_context_flow);
+    if (!device)
+      return false;
+
+    xrt::uuid loadedXclbinUuid = getXclbinUuidOnDevice(device);
+    xrt::xclbin loadedXclbin = device->get_xclbin(loadedXclbinUuid);
+    XclbinInfoType loadedXclbinType = getXclbinType(loadedXclbin);
+
+    return ((loadedXclbinType == XclbinInfoType::XCLBIN_PL_ONLY) ||
+            (loadedXclbinType == XclbinInfoType::XCLBIN_AIE_PL));
   }
 
   // Return true if we should reset the device information.
@@ -1769,27 +1756,6 @@ namespace xdp {
       }
     } catch(...) {
       currentXclbin->name = defaultName;
-    }
-  }
-
-  void VPStaticDatabase::updateSystemDiagram(const char* systemMetadataSection,
-                                             size_t systemMetadataSz)
-  {
-    if (systemMetadataSection == nullptr || systemMetadataSz <= 0)
-      return;
-
-    // For now, also update the System metadata for the run summary.
-    //  TODO: Expand this so that multiple devices and multiple xclbins
-    //  don't overwrite the single system diagram information
-    std::ostringstream buf ;
-    for (size_t index = 0 ; index < systemMetadataSz ; ++index) {
-      buf << std::hex << std::setw(2) << std::setfill('0')
-          << static_cast<unsigned int>(systemMetadataSection[index]);
-    }
-
-    {
-      std::lock_guard<std::mutex> lock(summaryLock) ;
-      systemDiagram = buf.str() ;
     }
   }
 
@@ -2479,7 +2445,9 @@ namespace xdp {
     bool is_aie_available = false;
     bool is_pl_available  = false;
 
-    auto data = xrt_core::xclbin_int::get_axlf_section(xclbin, AIE_METADATA);
+    auto data = xrt_core::xclbin_int::get_axlf_section(xclbin, AIE_TRACE_METADATA);
+    if (!data.first || !data.second)
+      data = xrt_core::xclbin_int::get_axlf_section(xclbin, AIE_METADATA);
     if (data.first && data.second)
         is_aie_available = true;
 
@@ -2832,7 +2800,7 @@ namespace xdp {
     // Step 5 -> Fill in the details like the name of the xclbin using
     //           the SYSTEM_METADATA section
     setXclbinName(currentXclbin, systemMetadata.first, systemMetadata.second);
-    updateSystemDiagram(systemMetadata.first, systemMetadata.second);
+    db->updateSystemDiagram(systemMetadata.first, systemMetadata.second);
     addPortInfo(currentXclbin, systemMetadata.first, systemMetadata.second);
 
     return true;

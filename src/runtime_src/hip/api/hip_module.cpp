@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright (C) 2023-2024 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2023-2025 Advanced Micro Devices, Inc. All rights reserved.
+
+#include <array>
 
 #include "hip/core/common.h"
 #include "hip/core/event.h"
 #include "hip/core/module.h"
 #include "hip/core/stream.h"
-#include "hip/xrt_hip.h"
+#include "hip/hip_xrt.h"
 
 #include <elfio/elfio.hpp>
 
@@ -15,9 +17,10 @@ static void
 hip_module_launch_kernel(hipFunction_t f, uint32_t /*gridDimX*/, uint32_t /*gridDimY*/,
                          uint32_t /*gridDimZ*/, uint32_t /*blockDimX*/, uint32_t /*blockDimY*/,
                          uint32_t /*blockDimZ*/, uint32_t sharedMemBytes, hipStream_t hStream,
-                         void** kernelParams, void** /*extra*/)
+                         void** kernelParams, void** extra)
 {
   throw_invalid_resource_if(!f, "function is nullptr");
+  throw_invalid_value_if(!kernelParams, "kernel parameters is nullptr");
 
   auto func_hdl = reinterpret_cast<function_handle>(f);
   auto hip_mod = module_cache.get(static_cast<function*>(func_hdl)->get_module());
@@ -30,11 +33,12 @@ hip_module_launch_kernel(hipFunction_t f, uint32_t /*gridDimX*/, uint32_t /*grid
   // Revisit if we need to launch multiple times
 
   auto hip_stream = get_stream(hStream);
+  throw_invalid_value_if(!hip_stream, "invalid stream handle.");
   auto s_hdl = hip_stream.get();
   auto cmd_hdl = insert_in_map(command_cache,
                                std::make_shared<kernel_start>(hip_stream,
                                                               hip_func,
-                                                              kernelParams));
+                                                              kernelParams, extra));
   s_hdl->enqueue(command_cache.get(cmd_hdl));
 }
 
@@ -51,29 +55,106 @@ hip_module_get_function(hipModule_t hmod, const char* name)
   return hip_mod->add_function(std::string{name});
 }
 
+static bool
+hip_module_data_is_elf(const char *data, size_t size)
+{
+  constexpr std::array<unsigned char, 4> elf_header_magic = {0x7f, 'E', 'L', 'F'};
+  if (size < elf_header_magic.size())
+    return false;
+
+  if (!std::memcmp(data, elf_header_magic.data(), elf_header_magic.size()))
+    return true;
+
+  return false;
+}
+
+static bool
+hip_module_file_is_elf(const std::string& file_name)
+{
+  std::ifstream file(file_name, std::ios::in | std::ios::binary);
+  throw_invalid_value_if(!file, "not able to open module file");
+  std::array<char, 4> file_header{};
+  file.read(file_header.data(), file_header.size());
+  throw_invalid_value_if(!file, "failed to read header from module file");
+
+  return hip_module_data_is_elf(file_header.data(), file_header.size());
+}
+
+template <typename T>
+static module_handle
+hip_create_module_config_param(std::shared_ptr<context> ctx, const std::string &file_name,
+                               uint32_t num_config_params, const hipXrtModuleCfgParam_t *params)
+{
+  throw_invalid_value_if(num_config_params && !params,
+			 "invalid configuration parameters passed");
+  if (!num_config_params)
+    return insert_in_map(module_cache, std::make_shared<T>(std::move(ctx), file_name));
+  std::map<std::string, uint32_t> config_params;
+  for (uint32_t i = 0; i < num_config_params; ++i)
+    config_params[std::string{params[i].name}] = params[i].data;
+  return insert_in_map(module_cache, std::make_shared<T>(std::move(ctx), file_name, config_params));
+}
+
+template <typename T>
+static module_handle
+hip_create_module_config_param(std::shared_ptr<context> ctx, void *data, size_t size,
+                               uint32_t num_config_params, const hipXrtModuleCfgParam_t *params)
+{
+  throw_invalid_value_if(num_config_params && !params,
+			 "invalid configuration parameters passed");
+  if (!num_config_params)
+    return insert_in_map(module_cache, std::make_shared<T>(std::move(ctx), data, size));
+  std::map<std::string, uint32_t> config_params;
+  for (uint32_t i = 0; i < num_config_params; ++i)
+    config_params[std::string{params[i].name}] = params[i].data;
+  return insert_in_map(module_cache, std::make_shared<T>(std::move(ctx), data, size,
+                                                         config_params));
+}
+
+static module_handle
+hip_create_top_module_config_data(const hipModuleData* config)
+{
+  auto ctx = get_current_context();
+  throw_context_destroyed_if(!ctx, "context is destroyed, no active context");
+
+  if (config->type == hipModuleDataFilePath) {
+    std::string file_name(static_cast<const char*>(config->data));
+    if (hip_module_file_is_elf(file_name))
+      return hip_create_module_config_param<module_full_elf>(std::move(ctx), file_name,
+                                                             config->numCfgParams,
+                                                             config->cfgParams);
+
+    return hip_create_module_config_param<module_xclbin>(std::move(ctx), file_name,
+                                                         config->numCfgParams,
+                                                         config->cfgParams);
+  }
+  else if (config->type == hipModuleDataBuffer) {
+    if (hip_module_data_is_elf(static_cast<char*>(config->data), config->size))
+      return hip_create_module_config_param<module_full_elf>(std::move(ctx), config->data,
+                                                             config->size, config->numCfgParams,
+                                                             config->cfgParams);
+
+    return hip_create_module_config_param<module_xclbin>(std::move(ctx), config->data, config->size,
+                                                         config->numCfgParams,
+                                                         config->cfgParams);
+  }
+  throw_hip_error(hipErrorInvalidValue, "invalid module data type passed");
+  // Will never reach here, this is to satisfy compiler
+  return nullptr;
+}
+
 static module_handle
 create_module(const hipModuleData* config)
 {
   // this function can be used to load either xclbin or elf based on parent module
-  // if parent module is null then buffer passed has xclbin data else parent module
-  // will point to xclbin module already loaded and buffer passed will have elf data
+  // if parent module is null then buffer passed has xclbin data or full elf data,
+  // else parent module will point to xclbin module already loaded and buffer passed
+  // will have elf data
 
-  if (!config->parent) {
-    // xclbin load
-    auto ctx = get_current_context();
-    throw_context_destroyed_if(!ctx, "context is destroyed, no active context");
-    // create xclbin module and store it in module map
-    if (config->type == hipModuleDataFilePath) {
-      // data passed is file path
-      return insert_in_map(module_cache,
-                           std::make_shared<module_xclbin>(ctx, std::string{static_cast<char*>(config->data), config->size}));
-    }
-    else if (config->type == hipModuleDataBuffer) {
-      // data passed is buffer, validity of buffer is checked during xrt::xclbin construction
-      return insert_in_map(module_cache, std::make_shared<module_xclbin>(ctx, config->data, config->size));
-    }
-    throw xrt_core::system_error(hipErrorInvalidValue, "invalid module data type passed");
-  }
+  throw_invalid_value_if(!config->data, "empty config data");
+
+  if (!config->parent)
+    return hip_create_top_module_config_data(config);
 
   // elf load
   auto hip_mod = module_cache.get(reinterpret_cast<module_handle>(config->parent));
@@ -93,36 +174,11 @@ create_module(const hipModuleData* config)
     // data passed is buffer
     return insert_in_map(module_cache, std::make_shared<module_elf>(hip_xclbin_mod.get(), config->data, config->size));
   }
-  throw xrt_core::system_error(hipErrorInvalidValue, "invalid module data type passed");
+  throw_hip_error(hipErrorInvalidValue, "invalid module data type passed");
+  // Will never reach here, this is to satisfy compiler
+  return nullptr;
 }
 
-
-// Function that estimates ELF size from header
-static size_t
-estimate_elf_size(const void* data)
-{
-  auto bytes = static_cast<const unsigned char*>(data);
-  constexpr std::array<unsigned char, 4> ELF_HEADER_MAGIC = {0x7f, 'E', 'L', 'F'};
-
-  if (bytes[0] != ELF_HEADER_MAGIC[0] || bytes[1] != ELF_HEADER_MAGIC[1] ||
-      bytes[2] != ELF_HEADER_MAGIC[2] || bytes[3] != ELF_HEADER_MAGIC[3])
-    throw std::runtime_error("Invalid ELF magic number");
-
-  if (bytes[4] == ELFIO::ELFCLASS32) {
-    // 32 bit ELF
-    auto header = static_cast<const ELFIO::Elf32_Ehdr*>(data);
-    return std::max(header->e_shoff + static_cast<ELFIO::Elf32_Off>(header->e_shentsize) * header->e_shnum,
-                    header->e_phoff + static_cast<ELFIO::Elf32_Off>(header->e_phentsize) * header->e_phnum);
-  }
-  else if (bytes[4] == ELFIO::ELFCLASS64) {
-    // 64 bit ELF
-    auto header = static_cast<const ELFIO::Elf64_Ehdr*>(data);
-    return std::max(header->e_shoff + static_cast<ELFIO::Elf64_Off>(header->e_shentsize) * header->e_shnum,
-                    header->e_phoff + static_cast<ELFIO::Elf64_Off>(header->e_phentsize) * header->e_phnum);
-  }
-
-  throw std::runtime_error("Unable to calculate ELF size");
-}
 
 static module_handle
 create_full_elf_module(const std::string& fname)
@@ -131,15 +187,6 @@ create_full_elf_module(const std::string& fname)
   throw_context_destroyed_if(!ctx, "context is destroyed, no active context");
   // create module and store it in module map
   return insert_in_map(module_cache, std::make_shared<module_full_elf>(ctx, fname));
-}
-
-static module_handle
-create_full_elf_module(const void* image, size_t size)
-{
-  auto ctx = get_current_context();
-  throw_context_destroyed_if(!ctx, "context is destroyed, no active context");
-  // create module and store it in module map
-  return insert_in_map(module_cache, std::make_shared<module_full_elf>(ctx, image, size));
 }
 
 static module_handle
@@ -163,7 +210,7 @@ hip_module_unload(hipModule_t hmod)
 static void
 hip_func_set_attribute(const void* func, hipFuncAttribute attr, int value)
 {
-  throw std::runtime_error("Not implemented");
+  throw_hip_error(hipErrorNotSupported, "Not implemented");
 }
 } // // xrt::core::hip
 
@@ -175,7 +222,7 @@ hipModuleLaunchKernel(hipFunction_t f, uint32_t gridDimX, uint32_t gridDimY,
                       uint32_t blockDimZ, uint32_t sharedMemBytes, hipStream_t hStream,
                       void** kernelParams, void** extra)
 {
-  return handle_hip_func_error(__func__, hipErrorUnknown, [&] {
+  return handle_hip_func_error(__func__, hipErrorLaunchFailure, [&] {
     xrt::core::hip::hip_module_launch_kernel(f, gridDimX, gridDimY, gridDimZ, blockDimX, blockDimY,
                                              blockDimZ, sharedMemBytes, hStream, kernelParams, extra);
   });
@@ -184,7 +231,7 @@ hipModuleLaunchKernel(hipFunction_t f, uint32_t gridDimX, uint32_t gridDimY,
 hipError_t
 hipModuleGetFunction(hipFunction_t* hfunc, hipModule_t hmod, const char* name)
 {
-  return handle_hip_func_error(__func__, hipErrorUnknown, [&] {
+  return handle_hip_func_error(__func__, hipErrorRuntimeOther, [&] {
     throw_invalid_handle_if(!hfunc, "function passed is nullptr");
 
     auto handle = xrt::core::hip::hip_module_get_function(hmod, name);
@@ -195,21 +242,10 @@ hipModuleGetFunction(hipFunction_t* hfunc, hipModule_t hmod, const char* name)
 static hipError_t
 hip_module_load_data_helper(hipModule_t* module, const void* image)
 {
-  return handle_hip_func_error(__func__, hipErrorUnknown, [&] {
+  return handle_hip_func_error(__func__, hipErrorRuntimeOther, [&] {
     throw_invalid_resource_if(!module, "module is nullptr");
 
-    // Treat pointer passed has data to full ELF and
-    // try creating full ELF module
-    // if it throws fallback to xclbin + ELF flow
     xrt::core::hip::module_handle handle = nullptr;
-    try {
-      auto estimated_size = xrt::core::hip::estimate_elf_size(image);
-      handle = xrt::core::hip::create_full_elf_module(image, estimated_size);
-      *module = reinterpret_cast<hipModule_t>(handle);
-      return;
-    }
-    catch (...) { /*do nothing*/ }
-
     // image passed to this call is structure hipModuleData object pointer
     auto config_data = static_cast<const hipModuleData*>(image);
     handle = xrt::core::hip::create_module(config_data);
@@ -236,7 +272,7 @@ hipModuleLoadData(hipModule_t* module, const void* image)
 hipError_t
 hipModuleLoad(hipModule_t* module, const char* fname)
 {
-  return handle_hip_func_error(__func__, hipErrorUnknown, [&] {
+  return handle_hip_func_error(__func__, hipErrorRuntimeOther, [&] {
     throw_invalid_resource_if(!module, "module is nullptr");
 
     // Treat fname passed is filepath to full ELF and
@@ -258,7 +294,7 @@ hipModuleLoad(hipModule_t* module, const char* fname)
 hipError_t
 hipModuleUnload(hipModule_t hmod)
 {
-  return handle_hip_func_error(__func__, hipErrorUnknown, [&] {
+  return handle_hip_func_error(__func__, hipErrorRuntimeOther, [&] {
     xrt::core::hip::hip_module_unload(hmod);
   });
 }
@@ -266,7 +302,7 @@ hipModuleUnload(hipModule_t hmod)
 hipError_t
 hipFuncSetAttribute(const void* func, hipFuncAttribute attr, int value)
 {
-  return handle_hip_func_error(__func__, hipErrorUnknown, [&] {
+  return handle_hip_func_error(__func__, hipErrorRuntimeOther, [&] {
     xrt::core::hip::hip_func_set_attribute(func, attr, value);
   });
 }

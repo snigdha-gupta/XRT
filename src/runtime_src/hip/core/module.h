@@ -9,10 +9,6 @@
 #include "core/include/xrt/xrt_hw_context.h"
 #include "core/include/xrt/xrt_kernel.h"
 
-#include <mutex>
-#include <vector>
-#include <thread>
-
 namespace xrt::core::hip {
 
 // module_handle - opaque module handle
@@ -77,6 +73,12 @@ public:
 
   module_xclbin(std::shared_ptr<context> ctx, void* data, size_t size);
 
+  module_xclbin(std::shared_ptr<context> ctx, const std::string& file_name,
+                const xrt::hw_context::cfg_param_type& cfg_param);
+
+  module_xclbin(std::shared_ptr<context> ctx, void* data, size_t size,
+                const xrt::hw_context::cfg_param_type& cfg_param);
+
   const xrt::hw_context&
   get_hw_context() const
   {
@@ -121,6 +123,12 @@ public:
 
   module_full_elf(std::shared_ptr<context> ctx, const void* data, size_t size);
 
+  module_full_elf(std::shared_ptr<context> ctx, const std::string& file_name,
+                  const xrt::hw_context::cfg_param_type& cfg_param);
+
+  module_full_elf(std::shared_ptr<context> ctx, void* data, size_t size,
+                  const xrt::hw_context::cfg_param_type& cfg_param);
+
   const xrt::hw_context&
   get_hw_context() const
   {
@@ -141,8 +149,6 @@ class function
 {
   module_elf* m_elf_module = nullptr;
   module_full_elf* m_full_elf_module = nullptr;
-  std::vector<xrt::run> m_runs_cache; // cache for the runs to this function
-  std::mutex m_runs_mutex; // lock to m_runs_cache
   std::string m_func_name;
   xrt::kernel m_xrt_kernel;
 
@@ -164,27 +170,6 @@ public:
   get_kernel() const
   {
     return m_xrt_kernel;
-  }
-
-  xrt::run
-  get_run()
-  {
-    {
-      std::scoped_lock lock(m_runs_mutex);
-      if (!m_runs_cache.empty()) {
-        auto run = std::move(m_runs_cache.back());
-        m_runs_cache.pop_back();
-        return run;
-      }
-    }
-    return xrt::run(m_xrt_kernel);
-  }
-
-  void
-  release_run(xrt::run&& run)
-  {
-    std::scoped_lock lock(m_runs_mutex);
-    m_runs_cache.push_back(std::move(run));
   }
 
   const std::string&

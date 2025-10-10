@@ -1,24 +1,10 @@
-/**
- * Copyright (C) 2020-2022 Xilinx, Inc. All rights reserved.
- * Copyright (C) 2023 Advanced Micro Devices, Inc. All rights reserved.
- *
- * Licensed under the Apache License, Version 2.0 (the "License"). You may
- * not use this file except in compliance with the License. A copy of the
- * License is located at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
- * WARRANTIES OR CONDITIONS OF ANY KIND, either express or 
- * implied. See the License for the specific language governing 
- * permissions and limitations under the License. 
- */
-
+// SPDX-License-Identifier: Apache-2.0
+// Copyright (C) 2020-2022 Xilinx, Inc. All rights reserved.
+// Copyright (C) 2023-2025 Advanced Micro Devices, Inc. All rights reserved.
 #include "FormattedOutput.h"
 #include "Section.h"
 #include "SectionBitstream.h"
-#include "version.h"
+#include "xrt/detail/version.h"
 #include "XclBinSignature.h"
 #include "XclBinUtilities.h"
 #include <boost/algorithm/string.hpp>
@@ -787,6 +773,7 @@ reportKernels(std::ostream& _ostream,
   }
 
   boost::property_tree::ptree& ptXclBin = _ptMetaData.get_child("xclbin");
+  std::vector<std::string> kernel_names;
   auto userRegions = XUtil::as_vector<boost::property_tree::ptree>(ptXclBin, "user_regions");
   for (auto& userRegion : userRegions) {
     auto kernels = XUtil::as_vector<boost::property_tree::ptree>(userRegion, "kernels");
@@ -798,6 +785,7 @@ reportKernels(std::ostream& _ostream,
 
       auto sKernel = ptKernel.get<std::string>("name");
       _ostream << boost::format("%s %s\n") % "Kernel:" % sKernel;
+      kernel_names.push_back(sKernel);
 
       auto ports = XUtil::as_vector<boost::property_tree::ptree>(ptKernel, "ports");
       auto arguments = XUtil::as_vector<boost::property_tree::ptree>(ptKernel, "arguments");
@@ -920,6 +908,24 @@ reportKernels(std::ostream& _ostream,
         if (&ptInstance != &instances.back()) {
           _ostream << std::endl;
         }
+      }
+    }
+  }
+  // Print all remaining IPs and the base address
+  for (auto& ptIPData : ipLayout) {
+    // m_name is of the form '<kernel name>:<instance name>'	  
+    auto sKernelInstance = ptIPData.get<std::string>("m_name");
+    auto pos = sKernelInstance.find(':');
+    if (pos != std::string::npos){
+      auto sKernel = sKernelInstance.substr(0,pos);
+      auto sInstance = sKernelInstance.substr(pos+1);
+      // If the kernel name matches one of the kernels in build metadata, do nothing
+      if(std::find(kernel_names.begin(), kernel_names.end(), sKernel) == kernel_names.end()) {
+        _ostream << boost::format("%s %s\n") % "Kernel:" % sKernel;
+        _ostream << "--------------------------\n";
+        _ostream << boost::format("%-16s %s\n") % "Instance:" % sInstance;
+        auto sBaseAddress = ptIPData.get<std::string>("m_base_address");
+        _ostream << boost::format("   %-13s %s\n") % "Base Address:" % sBaseAddress;
       }
     }
   }

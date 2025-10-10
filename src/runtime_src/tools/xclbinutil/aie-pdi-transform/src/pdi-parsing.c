@@ -23,7 +23,6 @@
 /***************************** Include Files *********************************/
 #include <stdio.h>
 #include <string.h>
-#include "printf.h"
 #include "cdo_cmd.h"
 #include "load_pdi.h"
 #include "pdi-transform.h"
@@ -32,9 +31,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <fcntl.h>  // open, close
 #include <errno.h>
-#include <unistd.h> // for read()
 
 /************************** Constant Definitions *****************************/
 
@@ -104,15 +101,24 @@ void test_read_pdi(char* pdi, char** data, int* len)
   #define BUF_SIZE (1024*1024)
   *data = NULL;
   *len = 0;
-  int fd = open(pdi, O_RDONLY | O_CREAT, 0644);
-  if (fd ==-1)
-  {
+  FILE *fp = NULL;
+#if defined(_MSC_VER)
+  errno_t err = fopen_s(&fp, pdi, "rb");  // open in binary mode
+  if (err != 0 || fp == NULL) {
+    printf("%s create failed Error Number % d\n", pdi, err);
+    return;
+  }
+#else
+  fp = fopen(pdi, "rb");  // open in binary mode
+  if (fp == NULL) {
     printf("%s create failed Error Number % d\n", pdi, errno);
     return;
   }
+#endif
+
   *data = (char *)malloc((size_t)BUF_SIZE);
-  *len = (int)read(fd, *data, (size_t)BUF_SIZE);
-  close(fd);
+  *len = (int)fread(*data, 1, (size_t)BUF_SIZE, fp);
+  fclose(fp); // NOLINT
 }
 
 
@@ -122,15 +128,20 @@ FILE* file_pointer;
 // Main entry point for pdi transformation
 // Client should call this API
 // Within the function, XPdi_Compress_Transform is the most important call
-__attribute__((visibility("default"))) int pdi_transform(char* pdi_file,  char* pdi_file_out, const char* out_file)
+int pdi_transform(char* pdi_file,  char* pdi_file_out, const char* out_file)
 {
-   if (!out_file || (out_file[0] == '\0')) 
+   if (!out_file || (out_file[0] == '\0')) { 
      file_pointer = stdout;
-   else 
+   } else {
+#if defined(_MSC_VER)
+     fopen_s(&file_pointer, out_file, "a");
+#else
      file_pointer = fopen(out_file, "a");
+#endif
+   }
 
    // Set the file stream to line-buffered mode
-   setvbuf(file_pointer, NULL, _IOLBF, 0);
+   (void)setvbuf(file_pointer, NULL, _IOLBF, BUFSIZ);
 
   int Ret = 0;
   printf("Get pdi file %s, do tranform pdi check and parsing.\n", pdi_file);
@@ -155,15 +166,26 @@ __attribute__((visibility("default"))) int pdi_transform(char* pdi_file,  char* 
   XCdo_Print("Pdi parsing... file = %s; len = %u\n", pdi_file, PdiLoad.PdiLen);
   #define MAX_DEBUG_PDI_LEN (1024*500)
   const uint8_t cmpDmaData = 1;
+  // The default stack size on Windows is 1MB
+  // We should not delcare local variables with large size on the stack
+  // The following code will cause stack overflow on Windows
+  // Instead, we should use malloc to allocate memory on heap
+  /*
   char DebugPdi[MAX_DEBUG_PDI_LEN], DebugTransformPdi[MAX_DEBUG_PDI_LEN];
   memset((char*)DebugPdi, 0, (size_t)MAX_DEBUG_PDI_LEN);
   memset((char*)DebugTransformPdi, 0, (size_t)MAX_DEBUG_PDI_LEN);
+  */
+  char *DebugPdi = (char*)malloc((size_t)MAX_DEBUG_PDI_LEN);
+  char *DebugTransformPdi = (char*)malloc((size_t)MAX_DEBUG_PDI_LEN);
+  memset(DebugPdi, 0, (size_t)MAX_DEBUG_PDI_LEN);
+  memset(DebugTransformPdi, 0, (size_t)MAX_DEBUG_PDI_LEN);
+  
   SetDebugPdi((uint32_t *)DebugPdi, MAX_DEBUG_PDI_LEN, cmpDmaData);
   XCdo_Print("\n\nLoad original pdi\n");
   XPdi_Load(&PdiLoad);
   XCdo_Print("Load original pdi done\n");
+  
   SetDebugPdi((uint32_t *)DebugTransformPdi, MAX_DEBUG_PDI_LEN, cmpDmaData);
-
   XPdi_Compress_Transform(&PdiLoad, pdi_file_out);
 
   //Verify the data
@@ -178,6 +200,9 @@ __attribute__((visibility("default"))) int pdi_transform(char* pdi_file,  char* 
       assert(DebugTransformPdi[i] == DebugPdi[i]);
     }
   }
+
+  free(DebugPdi);
+  free(DebugTransformPdi);
 
   printf("\nThe transform PDI check pass!!! Transformed PDI is consistent with traditional PDI\n");
   if (data) free(data);

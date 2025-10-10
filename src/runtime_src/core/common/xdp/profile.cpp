@@ -87,9 +87,16 @@ register_callbacks(void* handle)
 void 
 load()
 {
+#if defined(XDP_CLIENT_BUILD) && defined(_WIN32)
+  // On Windows client, load AIE profiling from the SDK location
+  static xrt_core::sdk_loader xdp_aie_loader("xdp_aie_profile_plugin",
+                                             register_callbacks,
+                                             warning_callbacks_empty);
+#else
   static xrt_core::module_loader xdp_aie_loader("xdp_aie_profile_plugin",
                                                 register_callbacks,
                                                 warning_callbacks_empty);
+#endif
 }
 
 void
@@ -359,9 +366,16 @@ register_callbacks(void* handle)
 void 
 load()
 {
+#if defined(XDP_CLIENT_BUILD) && defined(_WIN32)
+  // On Windows client, load AIE trace from the SDK location
+  static xrt_core::sdk_loader xdp_aie_trace_loader("xdp_aie_trace_plugin",
+                                                   register_callbacks,
+                                                   warning_callbacks_empty);
+#else
   static xrt_core::module_loader xdp_aie_trace_loader("xdp_aie_trace_plugin",
                                                 register_callbacks,
                                                 warning_callbacks_empty);
+#endif
 }
 
 void 
@@ -410,9 +424,16 @@ register_callbacks(void* handle)
 void
 load()
 {
+#if defined(XDP_CLIENT_BUILD) && defined(_WIN32)
+  // On Windows client, load AIE Halt from the SDK location
+  static xrt_core::sdk_loader xdp_aie_halt_loader("xdp_aie_halt_plugin",
+                                                  register_callbacks,
+                                                  warning_callbacks_empty);
+#else
   static xrt_core::module_loader xdp_aie_halt_loader("xdp_aie_halt_plugin",
                                                      register_callbacks,
                                                      warning_callbacks_empty);
+#endif
 }
 
 void
@@ -430,6 +451,51 @@ finish_flush_device(void* handle)
 }
 
 } // end namespace xrt_core::xdp::aie::halt
+
+namespace xrt_core::xdp::hal::device_offload {
+
+std::function<void (void*, bool)> update_device_cb;
+std::function<void (void*)> finish_flush_device_cb;
+
+void
+register_callbacks(void* handle)
+{ 
+  #ifdef XDP_CLIENT_BUILD
+    (void)handle;	// Not supported on Client Devices.
+  #else
+    using utype = void (*)(void*, bool);
+    using ftype = void (*)(void*);
+
+    update_device_cb = reinterpret_cast<utype>(xrt_core::dlsym(handle, "updateDeviceHAL"));
+    finish_flush_device_cb = reinterpret_cast<ftype>(xrt_core::dlsym(handle, "flushDeviceHAL"));
+  #endif
+
+}
+
+void
+load()
+{
+  static xrt_core::module_loader xdp_loader("xdp_hal_device_offload_plugin",
+                                             register_callbacks,
+                                             warning_callbacks_empty);
+}
+
+// Make connections
+void
+update_device(void* handle, bool hw_context_flow)
+{
+  if (update_device_cb)
+    update_device_cb(handle, hw_context_flow);
+}
+
+void
+finish_flush_device(void* handle)
+{
+  if (finish_flush_device_cb)
+    finish_flush_device_cb(handle);
+}
+
+} // end namespace xrt_core::xdp::hal::device_offload
 
 namespace xrt_core::xdp {
 
@@ -601,6 +667,19 @@ update_device(void* handle, bool hw_context_flow)
            handle,
            hw_context_flow);
 
+  load_once_and_update(
+           []() {
+            return ((xrt_core::config::get_device_trace() != "off") ||
+                    (xrt_core::config::get_device_counters()));
+           },
+           xrt_core::xdp::hal::device_offload::load,
+           xrt_core::xdp::hal::device_offload::update_device,
+           "Failed to load HAL PL trace plugin. Caught exception ",
+           "Failed to setup for HAL PL trace. Caught exception ",
+           handle,
+           hw_context_flow);
+
+
   // Avoid warning until we've added support in all plugins
   (void)(hw_context_flow);
 #endif
@@ -650,6 +729,10 @@ finish_flush_device(void* handle)
     xrt_core::xdp::aie::trace::end_trace(handle);
   if (xrt_core::config::get_aie_profile())
     xrt_core::xdp::aie::profile::end_poll(handle);
+  if ((xrt_core::config::get_device_trace() != "off") ||
+      (xrt_core::config::get_device_counters()))
+    xrt_core::xdp::hal::device_offload::finish_flush_device(handle) ;
+
 #endif
 }
 

@@ -844,6 +844,13 @@ get_aie_profile_settings_interval_us()
   return value ;
 }
 
+inline bool
+get_aie_profile_settings_config_one_partition()
+{
+  static bool value = detail::get_bool_value("AIE_profile_settings.config_one_partition", false) ;
+  return value ;
+}
+
 inline std::string
 get_aie_profile_settings_graph_based_aie_metrics()
 {
@@ -965,6 +972,13 @@ get_aie_trace_settings_start_layer()
   return value;
 }
 
+inline bool
+get_aie_trace_settings_config_one_partition()
+{
+  static bool value = detail::get_bool_value("AIE_trace_settings.config_one_partition", false) ;
+  return value ;
+}
+
 inline std::string
 get_aie_trace_settings_graph_based_aie_tile_metrics()
 {
@@ -1081,6 +1095,21 @@ inline std::string
 get_dtrace_control_file_path()
 {
   static std::string value = detail::get_string_value("Debug.dtrace_control_file_path", "");
+  return value;
+}
+
+inline unsigned int
+get_run_buffer_pool_memory_mb()
+{
+  static constexpr unsigned int default_pool_memory_mb = 64;
+  static unsigned int value = detail::get_uint_value("Runtime.run_buffer_pool_memory_mb", default_pool_memory_mb);
+  return value;
+}
+
+inline unsigned int
+get_log_buffer_size_per_uc()
+{
+  static unsigned int value = detail::get_uint_value("Debug.log_buf_size_per_uc", 0);
   return value;
 }
 

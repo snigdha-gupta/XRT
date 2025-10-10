@@ -46,15 +46,6 @@ endif()
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-# --- Git ---
-find_package(Git)
-
-IF(GIT_FOUND)
-  MESSAGE(STATUS "Looking for GIT - found at ${GIT_EXECUTABLE}")
-ELSE(GIT_FOUND)
-  MESSAGE(FATAL_ERROR "Looking for GIT - not found")
-endif(GIT_FOUND)
-
 # --- XRT Variables ---
 include (${XRT_SOURCE_DIR}/CMake/xrtVariables.cmake)
 include (${XRT_SOURCE_DIR}/CMake/version.cmake)
@@ -74,10 +65,7 @@ endif()
 
 # ==-- x c l b i n u t i l --==================================================
 
-# aie-pdi-transform only supports linux build currently
-if(NOT WIN32)
-  add_subdirectory(aie-pdi-transform)
-endif()
+add_subdirectory(aie-pdi-transform)
 
 set(XCLBINUTIL_NAME "xclbinutil")
 
@@ -122,17 +110,15 @@ endif()
 
 # Add compile definitions
 if(NOT WIN32)
-   if(${RapidJSON_VERSION_MAJOR} GREATER 0)
-     target_compile_definitions(${XCLBINUTIL_NAME} PRIVATE ENABLE_JSON_SCHEMA_VALIDATION)
-   endif()
+  if(${RapidJSON_VERSION_MAJOR} GREATER 0)
+    target_compile_definitions(${XCLBINUTIL_NAME} PRIVATE ENABLE_JSON_SCHEMA_VALIDATION)
+  endif()
 endif()
 
 target_link_libraries(${XCLBINUTIL_NAME} PRIVATE ${Boost_LIBRARIES} Threads::Threads)
 
 # link the aie-pdi-transform static library
-if(NOT WIN32)
-   target_link_libraries(${XCLBINUTIL_NAME} PRIVATE transformcdo)
-endif()
+target_link_libraries(${XCLBINUTIL_NAME} PRIVATE transformcdo)
 
 # Link required windows specific libraries with MinGW
 if(WIN32 AND (CMAKE_CXX_COMPILER_ID STREQUAL "GNU"))
@@ -263,9 +249,7 @@ if (GTEST_FOUND AND NOT XRT_SYSTEM_INSTALL)
   endif()
 
   # link the aie-pdi-transform static library
-  if(NOT WIN32)
-     target_link_libraries(${UNIT_TEST_NAME} PRIVATE transformcdo)
-  endif()
+  target_link_libraries(${UNIT_TEST_NAME} PRIVATE transformcdo)
 
   # Add the test
   set(TEST_EXECUTABLE "${CMAKE_CURRENT_BINARY_DIR}/${UNIT_TEST_NAME}")

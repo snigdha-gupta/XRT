@@ -25,7 +25,7 @@ There are two sections of profile json:
 
 1. [qos](#qos)
 2. [bindings](#bindings)
-3. [execution](#execution)
+3. [executions](#executions)
 
 The `bindings` section defines how external resources are created,
 initialized, and bound to a run-recipe.
@@ -135,10 +135,11 @@ have been specified.
 #### File initialization
 
 ```
-
       "init": {
         "file": "<path or repo key>",
-        "skip": bytes // skip number of bytes in file
+        "skip": bytes    // skip number of bytes in file
+        "begin": offset, // offset to start writing at (default: 0)
+        "end": offset    // offset to end writing at (default: bo.size())
       }
 ```
 File initialization implies that the resource buffer should be
@@ -147,34 +148,36 @@ a key that locates a file on disk or in an artifacts repository used
 during construction of the `xrt::runner`.  If the binding element
 specifies a `size` value, then this size takes precedence over the
 size of the file, otherwise the size of the file will be the size of
-the buffer. The optional `skip` element
-allows skipping first bytes of the file during initialization of the
-buffer.
+the buffer. The optional `skip` element allows skipping first bytes 
+of the file during initialization of the buffer.
 
-All the bytes of a buffer are initialized regardless of the size of the
-`file`.
+The range defined by `[begin, end[` (default: `[0, bo.size()[`) are 
+the bytes of the buffer that will be populated with data from the file.
 
-If the file (minus skip bytes) is smaller than the buffer, then 
-the file wraps around and continues to initialize the buffer.
+All the bytes of the buffer range are initialized regardless of the size 
+of the `file`.
 
-If the file of larger than the buffer then only buffer size bytes
-of the file are used.
+If the file (minus skip bytes) is smaller than the buffer range, then 
+the file wraps around and continues to initialize the buffer range.
+
+If the file is larger than the buffer range then only buffer range
+bytes of the file are used.
 
 If a bindings element specifies `reinit`, then the buffer is
 reinitialized with bytes from the file in each iteration of the
 recipe.  The initialization in an iteration picks up from an offset
 into the file at the point where the previous iteration stopped
 copying.  Again, the file wraps around when end-of-file is reached
-without filling all the bytes of the buffer.
+without filling all the bytes of the buffer range.
 
 #### Strided initialization
 
 ```
       "init": {
-        "stride": 1,    // stride bytes
-        "value": 239,   // value to write at each stride
-        "begin": 0,     // beginning of range to write at
-        "end": 524288   // end of range
+        "stride": 1,     // stride bytes
+        "value": 239,    // value to write at each stride
+        "begin": offset, // offset to start writing at (default: 0)
+        "end": offset    // offset to end writing at (default: bo.size())
       }
 ```
 A buffer can
@@ -203,13 +206,21 @@ specified using a `validate` element for the binding.
     {
       "validate": {
         "file": "ofm.bin"
-        "skip": bytes // skip number of bytes in file
+        "skip": bytes    // skip number of bytes in file
+        "begin": offset, // bo offset to start validation at
+        "end": offset,   // bo offset to end validation at
       }
     }
 ```
 
 Validating can be against the content of a file as shown in above
-example, or it can be against another resource from the run recipe, in
+example.  The optional `skip` element allows skipping first bytes 
+of the file prior to validating against buffer data.  The range
+defined by `[begin, end[` (default: `[0, bo.size()[`) are 
+the bytes of the buffer that will be validated against the file
+data.
+
+, or it can be against another resource from the run recipe, in
 which case the validation element must contain a name reference
 instead of a file:
 
@@ -222,19 +233,37 @@ instead of a file:
 The validate element will be enhanced to cover other validation
 specifics as needed.
 
-## Execution
+## Executions
 
-The execution section of a profile specifies how many times the recipe
+The `executions` section of a profile profile is an array of one or
+more executions of a recipe, where each [execution](#execution)
+defines how the recipe should be executed.
+
+```
+  "executions": [
+    { ... },
+    { ... },
+    ...
+  ]
+```
+
+### Execution
+
+The execution section of a profile is a sub-element of 
+the profiles `executions` array.  It specified how many times the recipe
 should be executed and how.  It controls what should happen after each
 iteration and before next iteration. If `iterations` is not specified,
 then the recipe will execute one iteration.
 
 ```
-  "execution" : {
+  {
+    "name": "myexecution", // custom id for this execution
     "iterations": 500,     // default one iteration
     "verbose": false,      // disable reporting of cpu time
     "validate": true,      // validate after all iterations
     "runlist_threshold": 1 // when to use xrt::runlist
+    "mode": mode           // latency or throughput
+    "depth": depth         // clone the recipe runlist
     "iteration" : {
     }
   }
@@ -245,20 +274,53 @@ one iteration.
 - `iterations` (default: `1`) specifies how many times the recipe
   should execute.
 - `verbose` (default: `true`) controls printing of metrics post all
-iterations. By default the profile execution will display to stdout
-elapsed, throughput, and latency computed from running the recipe
-specified number of iterations.
+  iterations. By default the profile execution will display to stdout
+  elapsed, throughput, and latency computed from running the recipe
+  specified number of iterations.
 - `validate` (default: `false`) enables validation per binding
   elements upon completion of all iterations.
 - `runlist_threshold` (default: `6`) specifies when to
-xrt::runlist. xrt::runner controls when to use xrt::runlist versus a
-list of separate xrt::run objects. A value of `0` disables
-xrt::runlist completely, any other value is used to trigger when to
-use xrt::runlist based on corresponding number of recipe run
-objects.
+  xrt::runlist. xrt::runner controls when to use xrt::runlist versus a
+  list of separate xrt::run objects. A value of `0` disables
+  xrt::runlist completely, any other value is used to trigger when to
+  use xrt::runlist based on corresponding number of recipe run objects.
+- `mode` (optional) runs the recipe in specified mode. The recipe can
+  be run in latency, or throughput mode (see details below).
+- `depth` (default: 1 or 2). Specifies how many times the recipe runs should
+  be cloned. All `runs` specified in a [recipe](recipe.md#execution) are
+  treated as a single runlist.  In `throughput` mode the recipe runlist
+  is default instantiated twice, but `depth` can be used to create more
+  instances if that is necessary to keep the hardware busy.
 
+#### mode
+The `mode` element is optional but if present must be one of `latency`
+or `throughput`:
+
+- `latency` mode. In latency the runner treats the runs specified in
+  the recipe execution section [recipe](recipe.md#execution)a as a
+  single runlist. This runlist is executed `iterations` number of
+  times, waiting for each iteration to complete before starting the
+  next.  The latency is measured as as the average time it takes for a
+  single iteration of the runlist.
+- `throughput` mode. In throughput mode, the runner attempts to keep
+  the hardware busy. It treats the runs specified in the recipe
+  execution section [recipe](recipe.md#execution) as a single
+  runlist. This runlist is instantiated `depth` number of times, where
+  `depth` defaults to `2` if not specified. Each instantiated runlist
+  is submitted for execution `iterations` number of times. In the
+  first iteration all runlist instances are submitted one after the
+  other.  In subsequent iterations, when a runlist completes,
+  it is immediately resubmitted.  The throughput is measured as the
+  number of runlists completed in a second.  The `depth` is
+  significant to ensure that the hardware is kept busy, a `depth` of
+  `1` is really measuring latency but still reported as throughput if
+  `mode` is set to throughput.
+
+#### iteration
 The `iteration` sub-element is optional, but if present specifies what
-should happen before after each iteration of the run recipe.
+should happen before after each iteration of the run recipe.  Note,
+that the iteration sub-element is ignored if `latency` or `throughput`
+is specified.
 
 ```
   "execution" : {

@@ -35,20 +35,20 @@ namespace xdp {
   class Device;
 
   // Forward declarations of PL contents
-  struct Monitor ;
-  struct Memory ;
-  class ComputeUnitInstance ;
+  struct Monitor;
+  struct Memory;
+  class ComputeUnitInstance;
 
   // Forward declarations of AIE contents
-  struct AIECounter ;
-  struct TraceGMIO ;
-  struct NoCNode ;
-  class aie_cfg_tile ;
+  struct AIECounter;
+  struct TraceGMIO;
+  struct NoCNode;
+  class aie_cfg_tile;
 
   // Forward declarations of device and xclbin contents
-  struct DeviceInfo ;
-  struct ConfigInfo ;
-  struct XclbinInfo ;
+  struct DeviceInfo;
+  struct ConfigInfo;
+  struct XclbinInfo;
   class  IpMetadata;
 
   //Forward declaration of XDP's device structure
@@ -66,8 +66,6 @@ namespace xdp {
   private:
     // Parent pointer to database so we can issue broadcasts
     VPDatabase* db ;
-    // The static database handles the single instance of the run summary
-    std::unique_ptr<VPWriter> runSummary;
 
   private:
     // ********* Information specific to each host execution **********
@@ -76,11 +74,6 @@ namespace xdp {
     bool aieApplication = false;
 
     xdp::AppStyle appStyle = APP_STYLE_NOT_SET;
-
-    // The files that need to be included in the run summary for
-    //  consumption by Vitis_Analyzer
-    std::vector<std::pair<std::string, std::string> > openedFiles ;
-    std::string systemDiagram ;
 
     // ***** OpenCL Information ******
     std::set<uint64_t> commandQueueAddresses ;
@@ -99,8 +92,31 @@ namespace xdp {
     // Device Specific Information mapped to the Unique Device Id
     std::map<uint64_t, std::unique_ptr<DeviceInfo>> deviceInfo;
 
-    // Map of hwCtxImpl Handle to unique ID to form device UID.
-    std::map<void*, uint64_t> hwCtxImplUIDMap;
+    // Map of hwCtxImpl Handle to HwContextInfo struct that defines 
+    // deviceID and validityCount for that handle
+    struct HwContextInfo {
+      uint64_t uid; // deviceID
+      int validityCount; // number of plugins using this context
+      explicit HwContextInfo(uint64_t u, int count) 
+        : uid(u), validityCount(count) {}
+      
+      HwContextInfo() = delete;
+      HwContextInfo(const HwContextInfo&) = delete;
+      HwContextInfo& operator=(const HwContextInfo&) = delete;
+      
+      HwContextInfo(HwContextInfo&&) = default;
+      HwContextInfo& operator=(HwContextInfo&&) = default;
+
+      ~HwContextInfo() = default;
+
+      void incrementValidity() { validityCount++; }
+      void decrementValidity() { 
+        if (validityCount > 0) 
+          validityCount--; 
+      }
+      bool isValid() const { return validityCount > 0; }
+    };
+    std::map<void*, HwContextInfo> hwCtxImplUIDMap;
 
     // Static info can be accessed via any host thread, so we have
     //  fine grained locks on each of the types of data.
@@ -209,7 +225,7 @@ namespace xdp {
     constexpr double   earliestSupportedToolVersion() const { return 2019.2; }
     constexpr uint16_t earliestSupportedXRTVersionMajor() const { return 2; }
     constexpr uint16_t earliestSupportedXRTVersionMinor() const { return 5; }
-    XDP_CORE_EXPORT bool validXclbin(void* devHandle) ;
+    XDP_CORE_EXPORT bool validXclbin(void* devHandle, bool hw_context_flow=false) ;
 
     // ****************************************************
     // ***** Functions related to OpenCL information. *****
@@ -262,14 +278,6 @@ namespace xdp {
     //  We store that information here since there is no DeviceInfo.
     XDP_CORE_EXPORT std::vector<std::string>& getSoftwareEmulationPortBitWidths() ;
     XDP_CORE_EXPORT void addSoftwareEmulationPortBitWidth(const std::string& s) ;
-
-    // ************************************************
-    // ***** Functions related to the run summary *****
-    XDP_CORE_EXPORT
-    std::vector<std::pair<std::string, std::string>>& getOpenedFiles() ;
-    XDP_CORE_EXPORT
-    void addOpenedFile(const std::string& name, const std::string& type) ;
-    XDP_CORE_EXPORT std::string getSystemDiagram() ;
 
     // ***************************************************************
     // ***** Functions related to information on all the devices *****
@@ -329,6 +337,10 @@ namespace xdp {
      */
     XDP_CORE_EXPORT
     uint64_t getDeviceContextUniqueId(void*);
+
+
+    XDP_CORE_EXPORT
+    bool xclbinContainsPl(void* handle, bool hw_context_flow);
 
     // *********************************************************
     // ***** Functions related to trace_processor tool *****
@@ -397,6 +409,7 @@ namespace xdp {
                                   std::unique_ptr<aie_cfg_tile>& tile) ;
     XDP_CORE_EXPORT uint64_t getNumTracePLIO(uint64_t deviceId) ;
     XDP_CORE_EXPORT uint64_t getNumAIETraceStream(uint64_t deviceId) ;
+    XDP_CORE_EXPORT uint64_t getNumAIETraceStream(uint64_t deviceId, io_type ioType);
     XDP_CORE_EXPORT void* getAieDevInst(std::function<void* (void*)> fetch,
                                    void* devHandle, uint64_t deviceID=0) ;
     XDP_CORE_EXPORT void* getAieDevice(std::function<void* (void*)> allocate,
@@ -463,6 +476,15 @@ namespace xdp {
     // Functions to save current valid profile config
     XDP_CORE_EXPORT void saveProfileConfig(std::unique_ptr<const AIEProfileFinalConfig> cfg, uint64_t deviceId) ;
     XDP_CORE_EXPORT const AIEProfileFinalConfig* getProfileConfig(uint64_t deviceId) ;
+
+    void unregisterPluginFromHwContext(void* handle) { 
+      if (getAppStyle() == xdp::AppStyle::REGISTER_XCLBIN_STYLE) {
+        std::lock_guard<std::mutex> lock(hwCtxImplUIDMapLock);
+        auto it = hwCtxImplUIDMap.find(handle);
+        if (it != hwCtxImplUIDMap.end())
+          it->second.decrementValidity(); // Mark as invalid for current plugin
+      }
+    }
   } ;
 
 }

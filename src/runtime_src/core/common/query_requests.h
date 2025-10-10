@@ -295,6 +295,7 @@ enum class key_type
   xclbin_slots,
   aie_get_freq,
   aie_set_freq,
+  aie_thermal,
   dtbo_path,
 
   boot_partition,
@@ -333,6 +334,7 @@ enum class key_type
   firmware_log_version,
   firmware_log_state,
   firmware_log_config,
+  archive_path,
   frame_boundary_preemption,
   debug_ip_layout_path,
   debug_ip_layout,
@@ -1144,6 +1146,18 @@ struct aie_set_freq : request
 
   virtual std::any
   get(const device*, const std::any& partition_id, const std::any& freq) const override = 0;
+};
+
+struct aie_thermal : request
+{
+  using result_type = float;
+  static const key_type key = key_type::aie_thermal;
+
+  virtual std::any
+  get(const device*, const std::any&) const override = 0;
+
+  virtual void
+  put(const device*, const std::any&, const std::any&) const override = 0;
 };
 
 struct graph_status : request
@@ -2001,7 +2015,12 @@ struct aie_partition_info : request
 //   - std::vector<std::pair<uint32_t, uint32_t>>: Returns contexts matching (context_id, pid) pairs (Linux)
 struct context_health_info : request
 {
-  using result_type = std::vector<ert_ctx_health_data>;
+  struct smi_context_health {
+    uint64_t ctx_id;
+    uint64_t pid;
+    ert_ctx_health_data health_data;
+  };
+  using result_type = std::vector<smi_context_health>;
   static const key_type key = key_type::context_health_info;
 
   std::any
@@ -4127,10 +4146,7 @@ struct firmware_debug_buffer {
 
 struct event_trace_version : request 
 {
-  struct result_type {
-    uint16_t major;
-    uint16_t minor;
-  };
+  using result_type = uint32_t;
 
   static const key_type key = key_type::event_trace_version;
 
@@ -4140,11 +4156,14 @@ struct event_trace_version : request
 
 struct event_trace_data : request
 {
-  using result_type = firmware_debug_buffer;
+  using result_type = bool;
   static const key_type key = key_type::event_trace_data;
 
   std::any
   get(const device*) const override = 0;
+
+  std::any
+  get(const device*, const std::any&) const override = 0;
 
 };
 
@@ -4192,6 +4211,9 @@ struct firmware_log_data : request
 
   std::any
   get(const device*) const override = 0;
+
+  std::any
+  get(const device*, const std::any&) const override = 0;
 };
 
 struct firmware_log_state : request
@@ -4200,7 +4222,7 @@ struct firmware_log_state : request
     uint32_t action;
     uint32_t log_level;
   };
-  using result_type = uint32_t;  // get value type
+  using result_type = value_type;  // get value type
 
   static const key_type key = key_type::firmware_log_state;
   std::any
@@ -4213,6 +4235,15 @@ struct firmware_log_state : request
 struct firmware_log_config : request
 {
   static const key_type key = key_type::firmware_log_config;
+  using result_type = std::string;
+
+  std::any
+  get(const device*) const override = 0;
+};
+
+struct archive_path : request
+{
+  static const key_type key = key_type::archive_path;
   using result_type = std::string;
 
   std::any

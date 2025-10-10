@@ -8,6 +8,7 @@
 
 #include "core/common/utils.h"
 #include "core/common/query_requests.h"
+#include "core/common/archive.h"
 #include "core/tools/common/EscapeCodes.h"
 #include "core/tools/common/Process.h"
 #include "tools/common/Report.h"
@@ -298,6 +299,8 @@ run_test_suite_device( const std::shared_ptr<xrt_core::device>& device,
   if (testObjectsToRun.empty())
     throw std::runtime_error("No test given to validate against.");
 
+  auto test_archive = XBU::open_archive(device.get());
+
   get_platform_info(device, ptDeviceInfo, schemaVersion, std::cout);
   std::cout << "-------------------------------------------------------------------------------" << std::endl;
 
@@ -309,7 +312,8 @@ run_test_suite_device( const std::shared_ptr<xrt_core::device>& device,
     boost::property_tree::ptree ptTest;
     pretty_print_test_desc(testPtr, ptTest, test_idx, std::cout, xq::pcie_bdf::to_string(bdf));
     try {
-      ptTest = testPtr->startTest(device);
+      // Call startTest with archive if available, otherwise use standard call
+      ptTest = test_archive ? testPtr->startTest(device, test_archive.get()) : testPtr->startTest(device);
     } catch (const std::runtime_error& e) {
       std::cout << e.what() << std::endl;
       return test_status::failed;
@@ -321,6 +325,7 @@ run_test_suite_device( const std::shared_ptr<xrt_core::device>& device,
     ptDeviceTestSuite.push_back( std::make_pair("", ptTest) );
 
     pretty_print_test_run(ptTest, status, std::cout);
+    ++test_idx;
   }
 
   print_status(status, std::cout);

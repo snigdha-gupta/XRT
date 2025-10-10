@@ -3,15 +3,65 @@
 
 #pragma once
 
-// Please keep external include file dependencies to a minimum
+#include "core/common/query_requests.h"
+
 #include <functional>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace xrt_core {
 class device;
+namespace query {
+struct firmware_debug_buffer;
 }
+}
+
+//This is arbitrary for the moment. We can change this once we do real testing with firmware data
+constexpr size_t debug_buffer_size = static_cast<size_t>(4) * 1024 * 1024; // 4MB // NOLINT(readability-magic-numbers)
+
+/**
+ * @brief RAII wrapper for firmware debug buffer management
+ * 
+ * Encapsulates buffer allocation and firmware_debug_buffer configuration
+ * with automatic memory management and proper RAII semantics.
+ */
+class smi_debug_buffer {
+private:
+  std::vector<char> buffer;
+  xrt_core::query::firmware_debug_buffer log_buffer;
+
+public:
+  explicit 
+  smi_debug_buffer(uint64_t abs_offset = 0, 
+                   bool b_wait = false, 
+                   size_t size = debug_buffer_size);
+
+  xrt_core::query::firmware_debug_buffer& 
+  get_log_buffer() 
+  { 
+    return log_buffer; 
+  }
+
+  uint64_t 
+  get_size() const
+  {
+    return log_buffer.size;
+  }
+
+  void*
+  get_data() const
+  {
+    return log_buffer.data;
+  }
+
+  uint64_t
+  get_offset() const
+  {
+    return log_buffer.abs_offset;
+  }
+};
 
 /**
  * @brief Generic watch mode utility for XRT-SMI reports
@@ -49,7 +99,7 @@ public:
    * - Return formatted string ready for display
    * - Handle any exceptions internally (return error message if needed)
    */
-  using ReportGenerator = std::function<std::string(const xrt_core::device*, const std::vector<std::string>&)>;
+  using ReportGenerator = std::function<std::string(const xrt_core::device*)>;
 
   /**
    * @brief Parse watch mode options from element filters
@@ -58,10 +108,7 @@ public:
    * @return true if watch mode is requested, false otherwise
    * 
    * Supported formats:
-   * - "watch" - Enable watch mode with default 1 second interval
-   * 
-   * Future extensions could support:
-   * - "watch=<seconds>" - Custom interval (not implemented yet)
+   * - "watch" - Enable watch mode
    * 
    * @note This function only checks for watch mode presence, 
    *       it does not validate or parse other filter options
@@ -92,27 +139,7 @@ public:
    */
   static void 
   run_watch_mode(const xrt_core::device* device,
-                            const std::vector<std::string>& elements_filter,
-                            std::ostream& output,
-                            const ReportGenerator& report_generator,
-                            const std::string& report_title = "Report");
-
-  /**
-   * @brief Filter out watch-specific options from element filters
-   * 
-   * @param elements_filter Input element filters that may contain watch options
-   * @return New vector with watch-specific options removed
-   * 
-   * Removes the following patterns:
-   * - "watch" - Simple watch mode activation
-   * - "watch=<value>" - Watch mode with custom options (future extension)
-   * 
-   * This allows the filtered list to be passed to report generators
-   * without them needing to handle watch-specific syntax.
-   * 
-   * @note The returned vector may be smaller than the input
-   * @note Original vector is not modified (returns new vector)
-   */
-  static std::vector<std::string> 
-  filter_out_watch_options(const std::vector<std::string>& elements_filter);
+                 std::ostream& output,
+                 const ReportGenerator& report_generator,
+                 const std::string& report_title = "Report");
 };

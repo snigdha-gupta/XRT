@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-// Copyright (C) 2024 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2024-2025 Advanced Micro Devices, Inc. All rights reserved.
+
+#include <iostream>
 
 #include "event.h"
+#include "hip/hip_xrt.h"
 #include "memory.h"
 
 namespace xrt::core::hip {
@@ -65,6 +68,8 @@ bool event::synchronize()
 bool event::wait()
 {
   state event_state = get_state();
+  if (event_state == state::error)
+    throw_hip_error(hipErrorRuntimeOther, "event is in error state");
   if (event_state < state::completed)
   {
     synchronize();
@@ -99,6 +104,7 @@ void event::add_dependency(std::shared_ptr<command> cmd)
 kernel_start::kernel_start(std::shared_ptr<stream> s, std::shared_ptr<function> f, void** args)
   : command(type::kernel_start, std::move(s))
   , func{std::move(f)}
+  , m_ctrl_scratchpad_bo_sync_rd{false}
 {
   auto k = func->get_kernel();
 
@@ -132,14 +138,13 @@ kernel_start::kernel_start(std::shared_ptr<stream> s, std::shared_ptr<function> 
    */
 
   // create run object and set args
-  r = func->get_run();
+  r = xrt::run(k);
 
   using karg = xrt_core::xclbin::kernel_argument;
   int idx = 0;
   for (const auto& arg : xrt_core::kernel_int::get_args(k)) {
     // non index args are not supported, this condition will not hit in case of HIP
-    if (arg->index == karg::no_index)
-      throw std::runtime_error("function has invalid argument");
+    throw_invalid_value_if(arg->index == karg::no_index, "function has invalid argument");
 
     if (!args[idx]) {
       // Skip nullptr which is used for ctrlcode, ctrlcode size and ctrlpkt
@@ -155,8 +160,10 @@ kernel_start::kernel_start(std::shared_ptr<stream> s, std::shared_ptr<function> 
       case karg::argtype::global: {
         void **bufptr = static_cast<void **>(args[idx]);
         auto hip_mem = memory_database::instance().get_hip_mem_from_addr(*bufptr).first;
-        if (!hip_mem)
-          throw std::runtime_error("failed to get memory from arg at index - " + std::to_string(idx));
+        if (!hip_mem) {
+            std::string err_msg = "failed to get memory from arg at index - " + std::to_string(idx);
+	    throw_hip_error(hipErrorInvalidValue, err_msg.c_str());
+	}
 
         r.set_arg(arg->index, hip_mem->get_xrt_bo());
         break;
@@ -165,9 +172,58 @@ kernel_start::kernel_start(std::shared_ptr<stream> s, std::shared_ptr<function> 
       case karg::argtype::local :
       case karg::argtype::stream :
       default :
-        throw std::runtime_error("function has unsupported arg type");
+        throw_hip_error(hipErrorInvalidValue,
+          "function has unsupported arg type");
     }
     idx++;
+  }
+}
+
+kernel_start::
+kernel_start(std::shared_ptr<stream> s, std::shared_ptr<function> f, void** args, void** extra)
+  : kernel_start(std::move(s), std::move(f), args)
+{
+  if (!extra)
+    return;
+
+  throw_invalid_value_if(!(*extra),
+                         "kernel start cmd creation failed, extra is specified with null pointer.");
+
+  // check for control scratchpad bo requirement
+  auto extra_array = static_cast<hipXrtInfoExtraArray_t*>(*extra);
+  throw_invalid_value_if((!extra_array->numExtras || extra_array->numExtras > 1),
+                         "kernel start cmd creation failed, invalid number of extra information.");
+  struct hipXrtInfoExtraHead *extra_headers = extra_array->extras;
+  for (uint32_t i = 0; i < extra_array->numExtras; i++) {
+    struct hipXrtInfoExtraHead *extra_head = &extra_headers[i];
+
+    throw_invalid_value_if(extra_head->extraId != hipXrtExtraInfoCtrlScratchPad,
+                           "kernel start cmd creation failed, extra Info is not control scratchpad bo.");
+
+    auto ctrl_sp_bo_info = static_cast<hipXrtInfoCtrlScratchPad_t*>(extra_head->info);
+    void* ctrl_sp_host_ptr = reinterpret_cast<void*>(ctrl_sp_bo_info->ctrlScratchPadHostPtr);
+    uint32_t ctrl_sp_size = ctrl_sp_bo_info->ctrlScratchPadSize;
+    throw_invalid_value_if((!ctrl_sp_host_ptr || !ctrl_sp_size),
+			   "kernel start cmd creation failed, invalid control scratchpad bo information.");
+
+    // no control scratchpad bo for the run
+    m_ctrl_scratchpad_bo = r.get_ctrl_scratchpad_bo();
+    throw_invalid_value_if(!m_ctrl_scratchpad_bo,
+			   "kernel start cmd creation failed, control scratchpad bo expected but not allocated for the run.");
+    throw_invalid_value_if(ctrl_sp_bo_info->ctrlScratchPadSize > m_ctrl_scratchpad_bo.size(),
+			   "kernel start cmd creation failed, control scratchpad bo size provided by user is larger than allocated size.");
+
+    // there is control scratchpad bo allocated for the run, return the information to user
+    ctrl_sp_bo_info->ctrlScratchPadHostPtr =  reinterpret_cast<uint64_t>(m_ctrl_scratchpad_bo.map());
+    ctrl_sp_bo_info->ctrlScratchPadSize = m_ctrl_scratchpad_bo.size();
+    if (ctrl_sp_bo_info->syncAfterRun)
+      m_ctrl_scratchpad_bo_sync_rd = true;
+    else
+      m_ctrl_scratchpad_bo_sync_rd = false;
+
+    // sync control scratchpad bo to device before kernel start
+    m_ctrl_scratchpad_bo.write(ctrl_sp_host_ptr, static_cast<size_t>(ctrl_sp_size), 0);
+    m_ctrl_scratchpad_bo.sync(xclBOSyncDirection::XCL_BO_SYNC_BO_TO_DEVICE);
   }
 }
 
@@ -191,9 +247,26 @@ bool kernel_start::wait()
   state kernel_start_state = get_state();
   if (kernel_start_state == state::running)
   {
-    r.wait();
-    set_state(state::completed);
-    return true;
+    try {
+      r.wait2();
+
+      // if control scratchpad bo is required to be synced back to host, do it here
+      if (m_ctrl_scratchpad_bo_sync_rd && m_ctrl_scratchpad_bo)
+        m_ctrl_scratchpad_bo.sync(xclBOSyncDirection::XCL_BO_SYNC_BO_FROM_DEVICE);
+
+      set_state(state::completed);
+      return true;
+    }
+    catch (const std::exception& ex) {
+      // catch exception here is to set cmmand state to error.
+      // re-throw errors so that caller can catch and handle it
+      set_state(state::error);
+      throw_hip_error(hipErrorLaunchFailure, ex.what());
+    }
+    catch (...) {
+      set_state(state::error);
+      throw_hip_error(hipErrorLaunchFailure, "Unknown error from kernel wait");
+    }
   }
   else if (kernel_start_state == state::completed)
     return true;
@@ -220,13 +293,15 @@ bool memory_pool_command::submit()
   {
   case alloc:
     m_mem_pool->malloc(m_ptr, m_size);
+    set_state(state::completed);
     break;
   case free:
     m_mem_pool->free(m_ptr);
+    set_state(state::completed);
     break;
 
   default:
-    throw std::runtime_error("Invalid memory pool operation type.");
+    throw_hip_error(hipErrorInvalidValue, "Invalid memory pool operation type.");
     break;
   }
 

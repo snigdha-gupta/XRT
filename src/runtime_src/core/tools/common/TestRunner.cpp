@@ -7,6 +7,8 @@
 #include "tests/TestValidateUtilities.h"
 #include "core/common/error.h"
 #include "core/common/module_loader.h"
+#include "core/common/archive.h"
+#include "core/common/runner/runner.h"
 #include "core/tools/common/Process.h"
 #include "tools/common/BusyBar.h"
 #include "tools/common/XBUtilities.h"
@@ -41,12 +43,13 @@ signal_handler(int signal) {
 }
 
 static void
-runTestInternal(std::shared_ptr<xrt_core::device> dev,
+runTestInternal(const std::shared_ptr<xrt_core::device>& dev,
                 boost::property_tree::ptree& ptree,
                 TestRunner* test,
-                bool& is_thread_running)
+                bool& is_thread_running,
+                const xrt_core::archive* archive = nullptr)
 {
-  ptree = test->run(dev);
+  ptree = test->run(dev, archive);
   is_thread_running = false;
 }
 
@@ -68,7 +71,7 @@ TestRunner::TestRunner (const std::string & test_name,
 }
 
 boost::property_tree::ptree
-TestRunner::startTest(std::shared_ptr<xrt_core::device> dev)
+TestRunner::startTest(const std::shared_ptr<xrt_core::device>& dev, const xrt_core::archive* archive)
 {
   XBUtilities::BusyBar busy_bar("Running Test", std::cout);
   busy_bar.start(XBUtilities::is_escape_codes_disabled());
@@ -77,7 +80,7 @@ TestRunner::startTest(std::shared_ptr<xrt_core::device> dev)
   boost::property_tree::ptree result;
 
   // Start the test process
-  std::thread test_thread([&] { runTestInternal(dev, result, this, is_thread_running); });
+  std::thread test_thread([&] { runTestInternal(dev, result, this, is_thread_running, archive); });
   // Wait for the test process to finish or for the signal to be caught
   while (is_thread_running && !force_exit) {
     std::this_thread::sleep_for(std::chrono::seconds(1));

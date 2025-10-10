@@ -4,6 +4,7 @@
 // ------ I N C L U D E   F I L E S -------------------------------------------
 // Local - Include Files
 #include "SmiWatchMode.h"
+#include "core/common/query_requests.h"
 #include "core/common/time.h"
 
 // 3rd Party Library - Include Files
@@ -102,10 +103,9 @@ parse_watch_mode_options(const std::vector<std::string>& elements_filter)
 void 
 smi_watch_mode::
 run_watch_mode(const xrt_core::device* device,
-                               const std::vector<std::string>& elements_filter,
-                               std::ostream& output,
-                               const ReportGenerator& report_generator,
-                               const std::string& report_title)
+               std::ostream& output,
+               const ReportGenerator& report_generator,
+               const std::string& report_title)
 {
   if (!device || !report_generator) {
     output << "Error: Invalid device or report generator provided to watch mode\n";
@@ -116,20 +116,16 @@ run_watch_mode(const xrt_core::device* device,
   signal_handler::setup();
   
   output << "Starting " << report_title << " Watch Mode (Press Ctrl+C to exit)\n";
-  output << "Update interval: 1 second\n";
   output << "=======================================================\n\n";
   output.flush();
   
   signal_handler::reset_interrupt();
   std::string last_report;
   
-  // Filter out watch-specific options for the report generator
-  auto filtered_elements = filter_out_watch_options(elements_filter);
-  
   while (signal_handler::active()) {
     try {
       // Generate current report
-      std::string current_report = report_generator(device, filtered_elements);
+      std::string current_report = report_generator(device);
       
       // Only update display if content has changed
       if (current_report != last_report) {
@@ -147,9 +143,6 @@ run_watch_mode(const xrt_core::device* device,
       output << "Error generating report: " << e.what() << "\n";
       output.flush();
     }
-    
-    // Sleep for 1 second
-    std::this_thread::sleep_for(std::chrono::seconds(1));
   }
   
   output << "\n\nWatch mode interrupted by user.\n";
@@ -158,19 +151,8 @@ run_watch_mode(const xrt_core::device* device,
   signal_handler::restore();
 }
 
-std::vector<std::string> 
-smi_watch_mode::
-filter_out_watch_options(const std::vector<std::string>& elements_filter)
-{
-  std::vector<std::string> filtered;
-  filtered.reserve(elements_filter.size());
-  
-  std::copy_if(elements_filter.begin(), elements_filter.end(),
-               std::back_inserter(filtered),
-               [](const std::string& filter) {
-                 return !(filter == "watch" || filter.find("watch=") == 0);
-               });
-  
-  return filtered;
-}
-
+smi_debug_buffer::
+smi_debug_buffer(uint64_t abs_offset, bool b_wait, size_t size)
+  : buffer(size),
+    log_buffer{abs_offset, buffer.data(), size, b_wait}
+{}
