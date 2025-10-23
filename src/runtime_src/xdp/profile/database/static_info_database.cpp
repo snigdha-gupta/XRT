@@ -41,6 +41,8 @@
 #include "core/common/query_requests.h"
 #include "core/include/xrt/xrt_uuid.h"
 #include "core/common/api/hw_context_int.h"
+#include "xrt/xrt_hw_context.h"
+#include "core/common/api/xrt_hw_context.cpp"
 
 constexpr unsigned int XAM_STALL_PROPERTY_MASK  = 0x4;
 constexpr unsigned int XMON_TRACE_PROPERTY_MASK = 0x1;
@@ -1643,7 +1645,19 @@ namespace xdp {
     }
 
     auto device = util::convertToCoreDevice(hwCtxImpl, true);
-    xrt::uuid loadedXclbinUuid   = getXclbinUuidOnDevice(device);
+
+    // // This returns wrong result when a test with multiple xclbins is run twice without rebooting (Ref: https://jira.xilinx.com/projects/CR/issues/CR-1254001)
+    // xrt::uuid loadedXclbinUuid   = getXclbinUuidOnDevice(device); 
+
+    // Type 1:
+    xrt::hw_context context = xrt_core::hw_context_int::create_hw_context_from_implementation(hwCtxImpl);
+    xrt::uuid loadedXclbinUuid = context.get_xclbin_uuid();
+
+    // // Type 2:
+    // auto* ctx = static_cast<xrt::hw_context_impl*>(hwCtxImpl);
+    // xrt::xclbin xclbin = ctx->get_xclbin();
+    // xrt::uuid loadedXclbinUuid = xclbin.get_uuid();
+
     xrt::xclbin loadedXclbin     = device->get_xclbin(loadedXclbinUuid);
     XclbinInfoType loadedXclbinType = getXclbinType(loadedXclbin);
 
