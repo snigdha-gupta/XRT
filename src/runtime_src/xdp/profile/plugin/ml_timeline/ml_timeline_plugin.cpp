@@ -157,6 +157,7 @@ namespace xdp {
 
     std::string deviceName = util::getDeviceName(hwCtxImpl, true);
 
+    // TODO: do we support multiple xclbins here? If yes, change to updateDeviceFromCoreDeviceHwCtxFlow
     (db->getStaticInfo()).updateDeviceFromCoreDevice(deviceId, coreDevice);
     (db->getStaticInfo()).setDeviceName(deviceId, deviceName);
 

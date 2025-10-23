@@ -102,6 +102,7 @@ namespace xdp {
     
     // Only one device for VE2 Device flow
     uint64_t deviceId = db->addDevice("ve2_device");
+    // TODO: multiple xclbins are not supported for halt plugin, so not changing this to updateDeviceFromCoreDeviceHwCtxFlow
     (db->getStaticInfo()).updateDeviceFromCoreDevice(deviceId, coreDevice, false);
     (db->getStaticInfo()).setDeviceName(deviceId, "ve2_device");
 

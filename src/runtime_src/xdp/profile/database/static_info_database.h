@@ -321,21 +321,16 @@ namespace xdp {
                                 std::unique_ptr<xdp::Device> xdpDevice,
                                 void* devHandle);
     XDP_CORE_EXPORT
-    void updateDeviceFromCoreDeviceClient(uint64_t deviceId,
-                                          std::shared_ptr<xrt_core::device> device,
-                                          bool readAIEMetadata = true,
-                                          std::unique_ptr<xdp::Device> xdpDevice = nullptr);
+    void updateDeviceFromCoreDeviceHwCtxFlow(uint64_t deviceId,
+                                              std::shared_ptr<xrt_core::device> device,
+                                              void *hwCtxImpl = nullptr,
+                                              bool hw_context_flow = false,
+                                              bool readAIEMetadata = true,
+                                              std::unique_ptr<xdp::Device> xdpDevice = nullptr);                                          
 
     XDP_CORE_EXPORT
     void updateDeviceFromCoreDevice(uint64_t deviceId,
                                     std::shared_ptr<xrt_core::device> device,
-                                    bool readAIEMetadata = true,
-                                    std::unique_ptr<xdp::Device> xdpDevice = nullptr);                                          
-
-    XDP_CORE_EXPORT
-    void updateDeviceFromCoreDevice(uint64_t deviceId,
-                                    std::shared_ptr<xrt_core::device> device,
-                                    void *hwCtxImpl,
                                     bool readAIEMetadata = true,
                                     std::unique_ptr<xdp::Device> xdpDevice = nullptr);
 

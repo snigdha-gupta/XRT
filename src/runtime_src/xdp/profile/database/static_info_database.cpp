@@ -1570,46 +1570,19 @@ namespace xdp {
 
   void
   VPStaticDatabase::
-  updateDeviceFromCoreDeviceClient(uint64_t deviceId,
-                             std::shared_ptr<xrt_core::device> device,
-                             bool readAIEMetadata,
-                             std::unique_ptr<xdp::Device> xdpDevice)
+  updateDeviceFromCoreDeviceHwCtxFlow(uint64_t deviceId,
+                                      std::shared_ptr<xrt_core::device> device,
+                                      void* hwCtxImpl,
+                                      bool hw_context_flow,
+                                      bool readAIEMetadata,
+                                      std::unique_ptr<xdp::Device> xdpDevice)
   {
     xrt::uuid new_xclbin_uuid;
-    //TODO:: Getting xclbin_uuid should be unified for both Client and VE2.
-    if(isClient()) {
-      new_xclbin_uuid = device->get_xclbin_uuid();
-    }
-    else {
-      // updateDeviceFromCoreDevice(deviceId, device, true, xdpDevice);
+    // TODO:: Getting xclbin_uuid should be unified for both Client and VE2.
+    if(isClient() || !(hw_context_flow)) {
+      updateDeviceFromCoreDevice(deviceId, device, readAIEMetadata, std::move(xdpDevice));
       return;
-    }
-
-    /* If multiple plugins are enabled for the current run, the first plugin has already updated device information
-     * in the static data base. So, no need to read the xclbin information again.
-     */
-    if (!resetDeviceInfo(deviceId, xdpDevice.get(), new_xclbin_uuid))
-      return;
-
-    xrt::xclbin xrtXclbin = device->get_xclbin(new_xclbin_uuid);
-    updateDevice(deviceId, xrtXclbin, std::move(xdpDevice), isClient(), readAIEMetadata);
-  }
-
-  void
-  VPStaticDatabase::
-  updateDeviceFromCoreDevice(uint64_t deviceId,
-                             std::shared_ptr<xrt_core::device> device,
-                             void* hwCtxImpl,
-                             bool readAIEMetadata,
-                             std::unique_ptr<xdp::Device> xdpDevice)
-  {
-    xrt::uuid new_xclbin_uuid;
-    //TODO:: Getting xclbin_uuid should be unified for both Client and VE2.
-    if(isClient()) {
-      updateDeviceFromCoreDeviceClient(deviceId, device);
-      return;
-    }
-    else {        
+    } else {        
       xrt::hw_context context = xrt_core::hw_context_int::create_hw_context_from_implementation(hwCtxImpl);
       new_xclbin_uuid = context.get_xclbin_uuid();
     }
