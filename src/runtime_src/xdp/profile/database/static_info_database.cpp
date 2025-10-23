@@ -1214,15 +1214,28 @@ namespace xdp {
     if (deviceInfo.find(deviceId) == deviceInfo.end())
       return 0 ;
 
-    ConfigInfo* config = deviceInfo[deviceId]->currentConfig() ;
+    ConfigInfo* config = nullptr;
+    if (AppStyle::LOAD_XCLBIN_STYLE == getAppStyle()) {
+      config = deviceInfo[deviceId]->currentConfig() ;
+    } else {
+      if (deviceInfo.find(DEFAULT_PL_DEVICE_ID) == deviceInfo.end())
+        return 0 ;
+      config = deviceInfo[DEFAULT_PL_DEVICE_ID]->currentConfig() ;
+    }
+
     if (!config)
       return 0 ;
 
-    XclbinInfo* xclbin = config->getAieXclbin();
-    if (!xclbin)
-      return 0;
-    
-    return xclbin->aie.numTracePLIO ;
+    // check for aieXclbin
+    if (XclbinInfo* aieXclbin = config->getAieXclbin()) {
+      return aieXclbin->aie.numTracePLIO;
+    }
+    // if aieXclbin is null, check for plXclbin
+    if (XclbinInfo* plXclbin = config->getPlXclbin()) {
+      return plXclbin->aie.numTracePLIO;
+    }
+
+    return 0;
   }
 
   uint64_t VPStaticDatabase::getNumAIETraceStream(uint64_t deviceId)
@@ -1528,19 +1541,28 @@ namespace xdp {
       new_xclbin_uuid = device->get_xclbin_uuid();
     }
     else {
-      std::vector<xrt_core::query::xclbin_slots::slot_info> xclbin_slot_info;
-      try {
-        xclbin_slot_info = xrt_core::device_query<xrt_core::query::xclbin_slots>(device.get());
-      }
-      catch (const std::exception& e) {
-        std::stringstream msg;
-        msg << "Exception occured while retrieving loaded xclbin info: " << e.what();
-        xrt_core::message::send(xrt_core::message::severity_level::debug, "XRT", msg.str());
-      }
+      // std::vector<xrt_core::query::xclbin_slots::slot_info> xclbin_slot_info;
+      // try {
+      //   xclbin_slot_info = xrt_core::device_query<xrt_core::query::xclbin_slots>(device.get());
+      // }
+      // catch (const std::exception& e) {
+      //   std::stringstream msg;
+      //   msg << "Exception occured while retrieving loaded xclbin info: " << e.what();
+      //   xrt_core::message::send(xrt_core::message::severity_level::debug, "XRT", msg.str());
+      // }
 
-      if (xclbin_slot_info.empty())
-        return;
-      new_xclbin_uuid = xrt::uuid(xclbin_slot_info.back().uuid);
+      // if (xclbin_slot_info.empty())
+      //   return;
+      // new_xclbin_uuid = xrt::uuid(xclbin_slot_info.back().uuid);
+
+      // Type 1:
+      xrt::hw_context context = xrt_core::hw_context_int::create_hw_context_from_implementation(devHandle);
+      new_xclbin_uuid = context.get_xclbin_uuid();
+
+      // // Type 2:
+      // auto* ctx = static_cast<xrt::hw_context_impl*>(devHandle);
+      // xrt::xclbin xclbin = ctx->get_xclbin();
+      // new_xclbin_uuid = xclbin.get_uuid();
     }
 
     /* If multiple plugins are enabled for the current run, the first plugin has already updated device information
@@ -1593,8 +1615,76 @@ namespace xdp {
     updateDevice(deviceId, xrtXclbin, std::move(xdpDevice), isClient(), readAIEMetadata);
   }
 
-  xrt::uuid VPStaticDatabase::getXclbinUuidOnDevice(std::shared_ptr<xrt_core::device> device)
+  void
+  VPStaticDatabase::
+  updateDeviceFromCoreDevice(uint64_t deviceId,
+                             void *hwCtxImpl,
+                             bool hw_context_flow,
+                             bool readAIEMetadata,
+                             std::unique_ptr<xdp::Device> xdpDevice)
   {
+    auto device = util::convertToCoreDevice(hwCtxImpl, hw_context_flow);
+
+    xrt::uuid new_xclbin_uuid;
+    //TODO:: Getting xclbin_uuid should be unified for both Client and VE2.
+    if(isClient()) {
+      new_xclbin_uuid = device->get_xclbin_uuid();
+    }
+    else {
+      // Type 1:
+      xrt::hw_context context = xrt_core::hw_context_int::create_hw_context_from_implementation(hwCtxImpl);
+      new_xclbin_uuid = context.get_xclbin_uuid();
+
+      // // Type 2:
+      // auto* ctx = static_cast<xrt::hw_context_impl*>(hwCtxImpl);
+      // xrt::xclbin xclbin = ctx->get_xclbin();
+      // new_xclbin_uuid = xclbin.get_uuid();
+    }
+
+    /* If multiple plugins are enabled for the current run, the first plugin has already updated device information
+     * in the static data base. So, no need to read the xclbin information again.
+     */
+    if (!resetDeviceInfo(deviceId, xdpDevice.get(), new_xclbin_uuid))
+      return;
+
+    xrt::xclbin xrtXclbin = device->get_xclbin(new_xclbin_uuid);
+    updateDevice(deviceId, xrtXclbin, std::move(xdpDevice), isClient(), readAIEMetadata);
+  }
+
+  // xrt::uuid VPStaticDatabase::getXclbinUuidOnDevice(std::shared_ptr<xrt_core::device> device)
+  // {
+  //   if (!device) {
+  //     throw std::runtime_error("Invalid device handle - device is null");
+  //   }
+  //   if(isClient()) {
+  //     return device->get_xclbin_uuid();
+  //   }
+  //   else if (getFlowMode() == HW_EMU && !isEdge() && !isClient()) {
+  //     // This has to be Alveo hardware emulation, which doesn't support
+  //     // the xclbin_slots query.
+  //     return device->get_xclbin_uuid();
+  //   }
+  //   else {
+  //     std::vector<xrt_core::query::xclbin_slots::slot_info> xclbin_slot_info;
+  //     try {
+  //       xclbin_slot_info = xrt_core::device_query<xrt_core::query::xclbin_slots>(device.get());
+  //     }
+  //     catch (const std::exception& e) {
+  //       std::stringstream msg;
+  //       msg << "Failed to retrieve xclbin slot information: " << e.what();
+  //       throw std::runtime_error(msg.str());
+  //     }
+
+  //     if (xclbin_slot_info.empty())
+  //       throw std::runtime_error("No xclbin found - device may not have loaded xclbin");
+
+  //     return xrt::uuid(xclbin_slot_info.back().uuid);
+  //   }
+  // }
+
+  xrt::uuid VPStaticDatabase::getXclbinUuidOnDevice(void* hwCtxImpl)
+  {
+    auto device = util::convertToCoreDevice(hwCtxImpl, true);
     if (!device) {
       throw std::runtime_error("Invalid device handle - device is null");
     }
@@ -1607,20 +1697,14 @@ namespace xdp {
       return device->get_xclbin_uuid();
     }
     else {
-      std::vector<xrt_core::query::xclbin_slots::slot_info> xclbin_slot_info;
-      try {
-        xclbin_slot_info = xrt_core::device_query<xrt_core::query::xclbin_slots>(device.get());
-      }
-      catch (const std::exception& e) {
-        std::stringstream msg;
-        msg << "Failed to retrieve xclbin slot information: " << e.what();
-        throw std::runtime_error(msg.str());
-      }
+      // Type 1:
+      xrt::hw_context context = xrt_core::hw_context_int::create_hw_context_from_implementation(hwCtxImpl);
+      return context.get_xclbin_uuid();
 
-      if (xclbin_slot_info.empty())
-        throw std::runtime_error("No xclbin found - device may not have loaded xclbin");
-
-      return xrt::uuid(xclbin_slot_info.back().uuid);
+      // // Type 2:
+      // auto* ctx = static_cast<xrt::hw_context_impl*>(hwCtxImpl);
+      // xrt::xclbin xclbin = ctx->get_xclbin();
+      // return xclbin.get_uuid();
     }
   }
 
@@ -1645,19 +1729,7 @@ namespace xdp {
     }
 
     auto device = util::convertToCoreDevice(hwCtxImpl, true);
-
-    // // This returns wrong result when a test with multiple xclbins is run twice without rebooting (Ref: https://jira.xilinx.com/projects/CR/issues/CR-1254001)
-    // xrt::uuid loadedXclbinUuid   = getXclbinUuidOnDevice(device); 
-
-    // Type 1:
-    xrt::hw_context context = xrt_core::hw_context_int::create_hw_context_from_implementation(hwCtxImpl);
-    xrt::uuid loadedXclbinUuid = context.get_xclbin_uuid();
-
-    // // Type 2:
-    // auto* ctx = static_cast<xrt::hw_context_impl*>(hwCtxImpl);
-    // xrt::xclbin xclbin = ctx->get_xclbin();
-    // xrt::uuid loadedXclbinUuid = xclbin.get_uuid();
-
+    xrt::uuid loadedXclbinUuid   = getXclbinUuidOnDevice(hwCtxImpl); 
     xrt::xclbin loadedXclbin     = device->get_xclbin(loadedXclbinUuid);
     XclbinInfoType loadedXclbinType = getXclbinType(loadedXclbin);
 
@@ -1698,7 +1770,7 @@ namespace xdp {
     if (!device)
       return false;
 
-    xrt::uuid loadedXclbinUuid = getXclbinUuidOnDevice(device);
+    xrt::uuid loadedXclbinUuid = getXclbinUuidOnDevice(handle);
     xrt::xclbin loadedXclbin = device->get_xclbin(loadedXclbinUuid);
     XclbinInfoType loadedXclbinType = getXclbinType(loadedXclbin);
 
