@@ -834,9 +834,14 @@ namespace xdp {
         continue;
       }
 
-      auto tiles = metadataReader->getInterfaceTiles(graphMetrics[i][0],
-                                          graphMetrics[i][1],
-                                          graphMetrics[i][2]);
+      auto tiles = (graphMetrics[i].size() > 3) 
+                  ? metadataReader->getInterfaceTiles(graphMetrics[i][0],
+                                                      graphMetrics[i][1],
+                                                      graphMetrics[i][2],
+                                                      aie::convertStringToUint8(graphMetrics[i][3]))
+                  : metadataReader->getInterfaceTiles(graphMetrics[i][0],
+                                                      graphMetrics[i][1],
+                                                      graphMetrics[i][2]);
 
       for (auto& e : tiles) {
         configMetrics[moduleIdx][e] = graphMetrics[i][2];
