@@ -186,6 +186,8 @@ namespace xdp {
     DeviceInfo* updateDevice(uint64_t deviceId, xrt::xclbin xrtXclbin,
                              std::unique_ptr<xdp::Device> xdpDevice, bool clientBuild, bool readAIEdata = true) ;
 
+    void createDummyPLDeviceIntf(std::unique_ptr<xdp::Device> dev);
+
   public:
     VPStaticDatabase(VPDatabase* d) ;
     ~VPStaticDatabase() ;

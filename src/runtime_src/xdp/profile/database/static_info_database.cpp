@@ -438,18 +438,21 @@ namespace xdp {
   void VPStaticDatabase::createPLDeviceIntf(uint64_t deviceId, std::unique_ptr<xdp::Device> dev, XclbinInfoType newXclbinType)
   {
     std::lock_guard<std::mutex> lock(deviceLock);
-
-    if (dev == nullptr)
-      return;
-    if (deviceInfo.find(deviceId) == deviceInfo.end())
+    if (!dev || deviceInfo.find(deviceId) == deviceInfo.end())
       return;
     ConfigInfo* config = deviceInfo[deviceId]->currentConfig();
     if (!config)
       return;
-
+    
     // Check if new xclbin has new PL metadata
-    if ((newXclbinType == XCLBIN_AIE_PL) || (newXclbinType == XCLBIN_PL_ONLY))
-    {
+    if ((newXclbinType == XCLBIN_AIE_PL) || (newXclbinType == XCLBIN_PL_ONLY)) { 
+      // Handle special case for AIE register xclbin style
+      if (deviceId && !config->plDeviceIntf && getAppStyle() == AppStyle::REGISTER_XCLBIN_STYLE) {
+        xrt_core::message::send(xrt_core::message::severity_level::warning, "XRT", "Create PL Device For AIE Register xclbin");
+        createDummyPLDeviceIntf(std::move(dev));
+        return;
+      }
+
       /* Delete previous dummy plDeviceIntf if available and re-create using xclbin with PL.
       * For now, if HW Ctx for PL xclbin is created after a dummy PL Device Interface has been created for AIE only xclbin (for aie_trace), 
       * XDP errors out and aborts while processing the new PL xclbin. 
@@ -470,32 +473,40 @@ namespace xdp {
         config->plDeviceIntf = nullptr;
       }
     }
-    else if (newXclbinType == XCLBIN_AIE_ONLY)
-    {
+
+    else if (newXclbinType == XCLBIN_AIE_ONLY) {
       // By the time of PLDeviceIntf creation, corresponding config is already stored in loaded configs.
       // currently loaded config  = totalConfigs-1
       // previously loaded config = totalConfigs-2
       // Hence, required missing PLDeviceIntf is fetched from (totalConfigs-2) index.
-      int totalConfigs = deviceInfo[deviceId]->loadedConfigInfos.size();
-      if (totalConfigs > 1)
-      {
-        config->plDeviceIntf = deviceInfo[deviceId]->loadedConfigInfos[totalConfigs-2]->plDeviceIntf;
-        deviceInfo[deviceId]->loadedConfigInfos[totalConfigs-2]->plDeviceIntf = nullptr;
-      }else {
+      const auto& loadedConfigs = deviceInfo[deviceId]->loadedConfigInfos;
+      int totalConfigs = loadedConfigs.size();
+      
+      if (totalConfigs > 1) {
+        config->plDeviceIntf = loadedConfigs[totalConfigs - 2]->plDeviceIntf;
+        loadedConfigs[totalConfigs - 2]->plDeviceIntf = nullptr;
+      } else {
         // No previous PL device interface available
       }
 
-      if ((!config->plDeviceIntf) && (getAppStyle() == AppStyle::REGISTER_XCLBIN_STYLE)) {
-          // If AIE_ONLY xclbin loaded first, dummy PLDeviceIntf is created
-          if (deviceInfo.find(DEFAULT_PL_DEVICE_ID) == deviceInfo.end()) {
-            deviceInfo[DEFAULT_PL_DEVICE_ID] = std::make_unique<DeviceInfo>();
-            deviceInfo[DEFAULT_PL_DEVICE_ID]->createEmptyConfig();
-            ConfigInfo* plConfig = deviceInfo[DEFAULT_PL_DEVICE_ID]->currentConfig();
-            plConfig->type = CONFIG_PL_DEVICE_INTF_ONLY;
-            plConfig->plDeviceIntf = new PLDeviceIntf();
-            plConfig->plDeviceIntf->setDevice(std::move(dev));
-          }
-      }
+      // Create dummy interface
+      if (!config->plDeviceIntf && getAppStyle() == AppStyle::REGISTER_XCLBIN_STYLE) 
+        createDummyPLDeviceIntf(std::move(dev));
+    }
+  }
+
+  // Helper function to create dummy PLDeviceIntf in the situations when
+  // AIE_ONLY xclbin is loaded first
+  void VPStaticDatabase::createDummyPLDeviceIntf(std::unique_ptr<xdp::Device> dev)
+  {
+    if (deviceInfo.find(DEFAULT_PL_DEVICE_ID) == deviceInfo.end()) {
+      deviceInfo[DEFAULT_PL_DEVICE_ID] = std::make_unique<DeviceInfo>();
+      deviceInfo[DEFAULT_PL_DEVICE_ID]->createEmptyConfig();
+      
+      ConfigInfo* plConfig = deviceInfo[DEFAULT_PL_DEVICE_ID]->currentConfig();
+      plConfig->type = CONFIG_PL_DEVICE_INTF_ONLY;
+      plConfig->plDeviceIntf = new PLDeviceIntf();
+      plConfig->plDeviceIntf->setDevice(std::move(dev));
     }
   }
 
@@ -1715,44 +1726,57 @@ namespace xdp {
 
   uint64_t VPStaticDatabase::getHwCtxImplUid(void* hwCtxImpl)
   {
-    // NOTE: XDP plugins checks for validity of the hwContex Implementation handle
-    // before calling this function. So, we don't need to check for validity here.
+    // NOTE: XDP plugins check for validity of the hwContext Implementation handle
+    // before calling this function, so we don't need to validate here.
+    
+    // Check if we've already assigned a UID to this hwCtx
     {
       std::lock_guard<std::mutex> lock(hwCtxImplUIDMapLock);
       auto it = hwCtxImplUIDMap.find(hwCtxImpl);
       if (it != hwCtxImplUIDMap.end()) {
-        auto& info = it->second;
-        if (info.isValid()) { // check if valid (non-zero)
-          info.incrementValidity(); // increment by 1 since a new plugin is encountered
-          return info.uid; // return UID
+        auto& handleInfo = it->second;
+        
+        // validityCount tracks how many plugins are actively using this hwCtx.
+        // If valid (count > 0), increment and return the existing UID.
+        if (handleInfo.isValid()) {
+          handleInfo.incrementValidity(); // A new plugin is now using this hwCtx
+          return handleInfo.uid;
         }
-        // If we reach here, the entry exists but is invalid (validityCount == 0)
-        // We'll erase it and create a new one below
+
+        // validityCount reached 0, meaning all plugins released this hwCtx.
+        // The handle was reused for a new handle, so remove stale entry and
+        // assign a fresh UID below.
         hwCtxImplUIDMap.erase(it);
       }
     }
-
+    
+    // Determine the UID to assign
     auto device = util::convertToCoreDevice(hwCtxImpl, true);
-    xrt::uuid loadedXclbinUuid = getXclbinUuidOnDeviceHwCtxFlow(hwCtxImpl);
-    xrt::xclbin loadedXclbin     = device->get_xclbin(loadedXclbinUuid);
-    XclbinInfoType loadedXclbinType = getXclbinType(loadedXclbin);
-
-    std::lock_guard<std::mutex> lock(hwCtxImplUIDMapLock);
-    if ((loadedXclbinType == XclbinInfoType::XCLBIN_PL_ONLY) ||
-        (loadedXclbinType == XclbinInfoType::XCLBIN_AIE_PL)) {
-      hwCtxImplUIDMap.emplace(hwCtxImpl, HwContextInfo(DEFAULT_PL_DEVICE_ID, 1)); // For PL_ONLY and AIE_PL xclbins, use 0 deviceId.
-
-      // At this point, also keep track of which xclbin is associated
-      // with this hardware context implementation for the run summary file
-      db->associateContextWithId(DEFAULT_PL_DEVICE_ID, hwCtxImpl);
+    uint64_t assignedUid;
+    
+    // Handle XDNA AIE-only case (no PL side)
+    if (xrt_core::config::get_xdp_mode() == "xdna" && device->get_device_id() == 0) {
+      assignedUid = nextAieOnlyHwCtxUId++;
     } else {
-       // At this point, also keep track of which xclbin is associated
-       // with this hardware context implementation for the run summary file
-       db->associateContextWithId(nextAieOnlyHwCtxUId, hwCtxImpl);
-       
-       hwCtxImplUIDMap.emplace(hwCtxImpl, HwContextInfo(nextAieOnlyHwCtxUId++, 1));
+      // Determine xclbin type to decide UID assignment
+      xrt::uuid loadedXclbinUuid = getXclbinUuidOnDeviceHwCtxFlow(hwCtxImpl);
+      xrt::xclbin loadedXclbin = device->get_xclbin(loadedXclbinUuid);
+      XclbinInfoType loadedXclbinType = getXclbinType(loadedXclbin);
+      
+      // PL_ONLY and AIE_PL xclbins use a fixed default device ID (0)
+      // Pure AIE xclbins get unique incrementing IDs
+      assignedUid = (loadedXclbinType == XclbinInfoType::XCLBIN_PL_ONLY || 
+                    loadedXclbinType == XclbinInfoType::XCLBIN_AIE_PL)
+                    ? DEFAULT_PL_DEVICE_ID
+                    : nextAieOnlyHwCtxUId++;
     }
-    return hwCtxImplUIDMap.at(hwCtxImpl).uid;
+    
+    // Insert new entry and associate with database
+    std::lock_guard<std::mutex> lock(hwCtxImplUIDMapLock);
+    hwCtxImplUIDMap.emplace(hwCtxImpl, HwContextInfo(assignedUid, 1));
+    db->associateContextWithId(assignedUid, hwCtxImpl);
+    
+    return assignedUid;
   }
 
   uint64_t VPStaticDatabase::getHwCtxImplUidElf(void* hwCtxImpl)
