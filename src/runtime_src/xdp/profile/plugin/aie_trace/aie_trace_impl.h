@@ -40,12 +40,15 @@ namespace xdp {
      * @param database Profile database for storing results and configuation 
      * @param metadata Design-specific AIE metadata typically taken from xclbin
      */
-    AieTraceImpl(VPDatabase* database, std::shared_ptr<AieTraceMetadata> metadata)
-      :db(database), metadata(metadata) {}
+    AieTraceImpl(VPDatabase* database, std::shared_ptr<AieTraceMetadata> metadata, uint64_t id)
+      :db(database), metadata(metadata), deviceID(id) {}
 
     AieTraceImpl() = delete;
     /// @brief AIE Trace implementation destructor
     virtual ~AieTraceImpl() {};
+
+    /// @brief deviceID getter function
+    uint64_t getDeviceID() { return deviceID; }
 
   protected:
     /// @brief Database for configuration and results
@@ -53,6 +56,9 @@ namespace xdp {
 
     /// @brief Trace metadata parsed from user settings
     std::shared_ptr<AieTraceMetadata> metadata;
+
+    /// @brief Device ID from handle
+    uint64_t deviceID; 
 
   public:
     /// @brief Update device (e.g., after loading xclbin)

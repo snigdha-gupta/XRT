@@ -28,7 +28,8 @@ namespace xdp {
 
     public:
       AieTrace_x86Impl(VPDatabase* database,
-                       std::shared_ptr<AieTraceMetadata> metadata);
+                       std::shared_ptr<AieTraceMetadata> metadata,
+                       uint64_t deviceID);
       ~AieTrace_x86Impl() = default;
       void updateDevice() override;
       void flushTraceModules() override;

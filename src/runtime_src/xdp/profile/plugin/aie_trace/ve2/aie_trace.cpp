@@ -64,8 +64,8 @@ namespace xdp {
   /****************************************************************************
    * Constructor: AIE trace implementation for edge devices
    ***************************************************************************/
-  AieTrace_VE2Impl::AieTrace_VE2Impl(VPDatabase* database, std::shared_ptr<AieTraceMetadata> metadata)
-      : AieTraceImpl(database, metadata)
+  AieTrace_VE2Impl::AieTrace_VE2Impl(VPDatabase* database, std::shared_ptr<AieTraceMetadata> metadata, uint64_t deviceID)
+      : AieTraceImpl(database, metadata, deviceID)
   {
     auto hwGen = metadata->getHardwareGen();
     auto counterScheme = metadata->getCounterScheme();
@@ -242,7 +242,7 @@ namespace xdp {
       return;
 
     // Set metrics for counters and trace events
-    if (!setMetricsSettings(metadata->getDeviceID(), metadata->getHandle())) {
+    if (!setMetricsSettings(deviceID, metadata->getHandle())) {
       std::string msg("Unable to configure AIE trace control and events. No trace will be generated.");
       xrt_core::message::send(severity_level::warning, "XRT", msg);
       return;
@@ -276,7 +276,7 @@ namespace xdp {
     uint8_t startCol = static_cast<uint8_t>(aiePartitionPt.back().second.get<uint64_t>("start_col"));
     uint8_t numCols  = static_cast<uint8_t>(aiePartitionPt.back().second.get<uint64_t>("num_cols"));
 
-    auto metadataReader = (VPDatabase::Instance()->getStaticInfo()).getAIEmetadataReader(metadata->getDeviceID());
+    auto metadataReader = (VPDatabase::Instance()->getStaticInfo()).getAIEmetadataReader(deviceID);
     if (!metadataReader) {
       xrt_core::message::send(severity_level::warning, "XRT",
           "AIE metadata reader not available for windowed trace configuration");

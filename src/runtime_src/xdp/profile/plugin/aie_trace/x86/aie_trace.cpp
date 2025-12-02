@@ -55,8 +55,9 @@ constexpr uint64_t MSG_OUTPUT_SIZE =
                           : (sizeof(MessageConfiguration) % ALIGNMENT_SIZE));
 
 AieTrace_x86Impl::AieTrace_x86Impl(VPDatabase *database,
-                                   std::shared_ptr<AieTraceMetadata> metadata)
-    : AieTraceImpl(database, metadata) {
+                                   std::shared_ptr<AieTraceMetadata> metadata,
+                                   uint64_t deviceID)
+    : AieTraceImpl(database, metadata, deviceID) {
   auto spdevice = xrt_core::get_userpf_device(metadata->getHandle());
   device = xrt::device(spdevice);
 
@@ -75,7 +76,7 @@ void AieTrace_x86Impl::updateDevice() {
   }
 
   // Set metrics for counters and trace events
-  if (!setMetricsSettings(metadata->getDeviceID(), metadata->getHandle())) {
+  if (!setMetricsSettings(deviceID, metadata->getHandle())) {
     std::string msg("Unable to configure AIE trace control and events. No "
                     "trace will be generated.");
     xrt_core::message::send(severity_level::warning, "XRT", msg);

@@ -77,7 +77,7 @@ uint64_t AieTracePluginUnified::getDeviceIDFromHandle(void *handle) {
   auto itr = handleToAIEData.find(handle);
 
   if (itr != handleToAIEData.end())
-    return itr->second.deviceID;
+    return itr->second.implementation->getDeviceID();
 
   return (db->getStaticInfo()).getDeviceContextUniqueId(handle);
 }
@@ -132,7 +132,6 @@ void AieTracePluginUnified::updateAIEDevice(void *handle, bool hw_context_flow) 
 
   // Setting up struct
   auto &AIEData = handleToAIEData[handle];
-  AIEData.deviceID = deviceID;
   AIEData.valid = true; // initialize struct
 
   // Update the static database with information from xclbin
@@ -169,13 +168,13 @@ void AieTracePluginUnified::updateAIEDevice(void *handle, bool hw_context_flow) 
 #ifdef XDP_CLIENT_BUILD
   xrt::hw_context context = xrt_core::hw_context_int::create_hw_context_from_implementation(handle);
   AIEData.metadata->setHwContext(context);
-  AIEData.implementation = std::make_unique<AieTrace_WinImpl>(db, AIEData.metadata);
+  AIEData.implementation = std::make_unique<AieTrace_WinImpl>(db, AIEData.metadata, deviceID);
 #elif defined(XRT_X86_BUILD)
-  AIEData.implementation = std::make_unique<AieTrace_x86Impl>(db, AIEData.metadata);
+  AIEData.implementation = std::make_unique<AieTrace_x86Impl>(db, AIEData.metadata, deviceID);
 #elif XDP_VE2_BUILD
-  AIEData.implementation = std::make_unique<AieTrace_VE2Impl>(db, AIEData.metadata);
+  AIEData.implementation = std::make_unique<AieTrace_VE2Impl>(db, AIEData.metadata, deviceID);
 #else
-  AIEData.implementation = std::make_unique<AieTrace_EdgeImpl>(db, AIEData.metadata);
+  AIEData.implementation = std::make_unique<AieTrace_EdgeImpl>(db, AIEData.metadata, deviceID);
 #endif
 
   // Check for device interface

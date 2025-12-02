@@ -78,8 +78,8 @@ namespace xdp {
   /****************************************************************************
    * Constructor: AIE trace implementation for edge devices
    ***************************************************************************/
-  AieTrace_EdgeImpl::AieTrace_EdgeImpl(VPDatabase* database, std::shared_ptr<AieTraceMetadata> metadata)
-      : AieTraceImpl(database, metadata)
+  AieTrace_EdgeImpl::AieTrace_EdgeImpl(VPDatabase* database, std::shared_ptr<AieTraceMetadata> metadata, uint64_t deviceID)
+      : AieTraceImpl(database, metadata, deviceID)
   {
     auto hwGen = metadata->getHardwareGen();
     auto counterScheme = metadata->getCounterScheme();
@@ -256,7 +256,7 @@ namespace xdp {
       return;
 
     // Set metrics for counters and trace events
-    if (!setMetricsSettings(metadata->getDeviceID(), metadata->getHandle())) {
+    if (!setMetricsSettings(deviceID, metadata->getHandle())) {
       std::string msg("Unable to configure AIE trace control and events. No trace will be generated.");
       xrt_core::message::send(severity_level::warning, "XRT", msg);
       return;

@@ -14,7 +14,7 @@ namespace xdp {
 
   class AieTrace_VE2Impl : public AieTraceImpl {
   public:
-    AieTrace_VE2Impl(VPDatabase* database, std::shared_ptr<AieTraceMetadata> metadata);
+    AieTrace_VE2Impl(VPDatabase* database, std::shared_ptr<AieTraceMetadata> metadata, uint64_t deviceID);
     ~AieTrace_VE2Impl() = default;
 
     void updateDevice() override;

@@ -19,7 +19,7 @@ extern "C" {
 namespace xdp {
   class AieTrace_WinImpl : public AieTraceImpl {
     public:
-      AieTrace_WinImpl(VPDatabase* database, std::shared_ptr<AieTraceMetadata> metadata);
+      AieTrace_WinImpl(VPDatabase* database, std::shared_ptr<AieTraceMetadata> metadata, uint64_t deviceID);
       ~AieTrace_WinImpl() = default;
       void updateDevice() override;
       void flushTraceModules() override;

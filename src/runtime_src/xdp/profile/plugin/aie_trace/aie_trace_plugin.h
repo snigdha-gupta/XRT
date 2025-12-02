@@ -58,7 +58,6 @@ private:
   static bool configuredOnePartition;
   static bool configuredOnePlioPartition;
   struct AIEData {
-    uint64_t deviceID;
     bool valid = false;
     std::atomic<bool> pollAIETimerThreadCtrlBool;
     std::thread pollAIETimerThread;

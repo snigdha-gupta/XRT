@@ -26,8 +26,8 @@
 namespace xdp {
   using severity_level = xrt_core::message::severity_level;
 
-  AieTrace_WinImpl::AieTrace_WinImpl(VPDatabase* database, std::shared_ptr<AieTraceMetadata> metadata)
-      : AieTraceImpl(database, metadata)
+  AieTrace_WinImpl::AieTrace_WinImpl(VPDatabase* database, std::shared_ptr<AieTraceMetadata> metadata, uint64_t deviceID)
+      : AieTraceImpl(database, metadata, deviceID)
   {
     // Pre-defined metric sets
     auto hwGen = metadata->getHardwareGen();
@@ -267,7 +267,7 @@ namespace xdp {
       return;
 
     // Set metrics for trace events
-    if (!setMetricsSettings(metadata->getDeviceID(), metadata->getHandle())) {
+    if (!setMetricsSettings(deviceID, metadata->getHandle())) {
       std::string msg("Unable to configure AIE trace control and events. No trace will be generated.");
       xrt_core::message::send(severity_level::warning, "XRT", msg);
       return;
