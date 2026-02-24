@@ -30,6 +30,19 @@ endif(XRT_ENABLE_WERROR)
 if (NOT XRT_EDGE)
   add_compile_options( ${XRT_WARN_OPTS} )
 endif()
+
+# --- AIE: aie-codegen (replaces aie-rt).  Must be before xdp so XDP can link aie_codegen. ---
+if (XRT_NPU)
+  set(XDP_USE_AIE_CODEGEN 1)
+  set(AIE_CODEGEN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/aie-codegen)
+  if (EXISTS ${AIE_CODEGEN_SOURCE_DIR}/src/CMakeLists.txt)
+    message(STATUS "XRT NPU build: adding aie-codegen from ${AIE_CODEGEN_SOURCE_DIR}")
+    xrt_add_subdirectory_disable_install_target(aie-codegen/src)
+  else()
+    message(FATAL_ERROR "XRT_NPU build requires aie-codegen submodule at ${AIE_CODEGEN_SOURCE_DIR}. Run: git submodule update --init src/runtime_src/aie-codegen")
+  endif()
+endif()
+
 xrt_add_subdirectory(xdp)
 
 xrt_add_subdirectory(tools/xclbinutil)
@@ -51,13 +64,6 @@ if (NOT XRT_EDGE)
   # For embedded, headers and libraries are installed in /usr
   # Not requeired setup.sh/.csh
   xrt_add_subdirectory(tools/scripts)
-  if (XRT_NPU)
-    # Used by xdp for include search path
-    set(AIERT_DIR ${CMAKE_CURRENT_BINARY_DIR}/aie-rt/driver/src)
-    set(XAIENGINE_BUILD_SHARED OFF)
-    xrt_add_subdirectory_disable_install_target(aie-rt/driver/src)
-  endif()
-
 endif()
 
 # Attach to the user's linker flags
@@ -83,11 +89,16 @@ else()
     add_compile_options( ${XRT_WARN_OPTS} )
   endif()
 
+  # --- AIE: aie-codegen (replaces aie-rt).  Must be before xdp so XDP can link aie_codegen. ---
   if (XRT_NPU)
-    # Used by xdp for include search path
-    set(AIERT_DIR ${CMAKE_CURRENT_BINARY_DIR}/aie-rt/driver/src)
-    set(XAIENGINE_BUILD_SHARED OFF)
-    xrt_add_subdirectory_disable_install_target(aie-rt/driver/src)
+    set(XDP_USE_AIE_CODEGEN 1)
+    set(AIE_CODEGEN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/aie-codegen)
+    if (EXISTS ${AIE_CODEGEN_SOURCE_DIR}/src/CMakeLists.txt)
+      message(STATUS "XRT NPU build: adding aie-codegen from ${AIE_CODEGEN_SOURCE_DIR}")
+      xrt_add_subdirectory_disable_install_target(aie-codegen/src)
+    else()
+      message(FATAL_ERROR "XRT_NPU build requires aie-codegen submodule at ${AIE_CODEGEN_SOURCE_DIR}. Run: git submodule update --init src/runtime_src/aie-codegen")
+    endif()
   endif()
 
   # Build Subdirectories

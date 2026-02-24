@@ -25,9 +25,8 @@ SET(CPACK_RPM_COMPONENT_INSTALL ON)
 # populate the variable explictly.
 get_cmake_property(CPACK_COMPONENTS_ALL COMPONENTS)
 
-# Cannot get rid of this aie-rt bogus component so
-# removing it explicitly.  This means we cannot have
-# a runtime component ever in XRT.
+# Remove bogus "runtime" component (legacy aie-rt packaging workaround).
+# This means we cannot have a runtime component ever in XRT.
 list(REMOVE_ITEM CPACK_COMPONENTS_ALL "runtime")
 message("Install components in the project: ${CPACK_COMPONENTS_ALL}")
 
