@@ -31,15 +31,17 @@ if (NOT XRT_EDGE)
   add_compile_options( ${XRT_WARN_OPTS} )
 endif()
 
-# --- AIE: aie-codegen (replaces aie-rt).  Must be before xdp so XDP can link aie_codegen. ---
+# XDP uses CMake variable XDP_USE_AIE_CODEGEN.  For NPU we must add aie-codegen before xdp
+# so the aie_codegen target exists when XDP builds client plugins that link it.
 if (XRT_NPU)
   set(XDP_USE_AIE_CODEGEN 1)
   set(AIE_CODEGEN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/aie-codegen)
   if (EXISTS ${AIE_CODEGEN_SOURCE_DIR}/src/CMakeLists.txt)
     message(STATUS "XRT NPU build: adding aie-codegen from ${AIE_CODEGEN_SOURCE_DIR}")
+    set(XAIENGINE_BUILD_SHARED OFF)
     xrt_add_subdirectory_disable_install_target(aie-codegen/src)
   else()
-    message(FATAL_ERROR "XRT_NPU build requires aie-codegen submodule at ${AIE_CODEGEN_SOURCE_DIR}. Run: git submodule update --init src/runtime_src/aie-codegen")
+    message(FATAL_ERROR "XRT_NPU build requires aie-codegen at ${AIE_CODEGEN_SOURCE_DIR}. Run: git submodule add <aie-codegen-url> src/runtime_src/aie-codegen")
   endif()
 endif()
 
@@ -89,15 +91,16 @@ else()
     add_compile_options( ${XRT_WARN_OPTS} )
   endif()
 
-  # --- AIE: aie-codegen (replaces aie-rt).  Must be before xdp so XDP can link aie_codegen. ---
+  # For NPU: add aie-codegen before xdp so aie_codegen target exists when XDP builds client plugins.
   if (XRT_NPU)
     set(XDP_USE_AIE_CODEGEN 1)
     set(AIE_CODEGEN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/aie-codegen)
     if (EXISTS ${AIE_CODEGEN_SOURCE_DIR}/src/CMakeLists.txt)
       message(STATUS "XRT NPU build: adding aie-codegen from ${AIE_CODEGEN_SOURCE_DIR}")
+      set(XAIENGINE_BUILD_SHARED OFF)
       xrt_add_subdirectory_disable_install_target(aie-codegen/src)
     else()
-      message(FATAL_ERROR "XRT_NPU build requires aie-codegen submodule at ${AIE_CODEGEN_SOURCE_DIR}. Run: git submodule update --init src/runtime_src/aie-codegen")
+      message(FATAL_ERROR "XRT_NPU build requires aie-codegen at ${AIE_CODEGEN_SOURCE_DIR}. Run: git submodule add <aie-codegen-url> src/runtime_src/aie-codegen")
     endif()
   endif()
 
