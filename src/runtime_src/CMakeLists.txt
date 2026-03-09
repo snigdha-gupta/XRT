@@ -30,6 +30,15 @@ endif(XRT_ENABLE_WERROR)
 if (NOT XRT_EDGE)
   add_compile_options( ${XRT_WARN_OPTS} )
 endif()
+
+# Client/NPU flow: aie-codegen (edge uses aie-rt elsewhere). Set before xdp so plugins see vars.
+if (XRT_NPU)
+  set(XDP_USE_AIE_CODEGEN 1)
+  set(AIE_CODEGEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/aie-codegen)
+  set(XAIENGINE_BUILD_SHARED OFF)
+  xrt_add_subdirectory_disable_install_target(aie-codegen/src)
+endif()
+
 xrt_add_subdirectory(xdp)
 
 xrt_add_subdirectory(tools/xclbinutil)
@@ -51,11 +60,12 @@ if (NOT XRT_EDGE)
   # For embedded, headers and libraries are installed in /usr
   # Not requeired setup.sh/.csh
   xrt_add_subdirectory(tools/scripts)
+  # Client/NPU flow: aie-codegen (edge uses aie-rt elsewhere). Set before xdp so plugins see vars.
   if (XRT_NPU)
-    # Used by xdp for include search path
-    set(AIERT_DIR ${CMAKE_CURRENT_BINARY_DIR}/aie-rt/driver/src)
+    set(XDP_USE_AIE_CODEGEN 1)
+    set(AIE_CODEGEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/aie-codegen)
     set(XAIENGINE_BUILD_SHARED OFF)
-    xrt_add_subdirectory_disable_install_target(aie-rt/driver/src)
+    xrt_add_subdirectory_disable_install_target(aie-codegen/src)
   endif()
 
 endif()
@@ -83,11 +93,12 @@ else()
     add_compile_options( ${XRT_WARN_OPTS} )
   endif()
 
+  # Client/NPU flow: aie-codegen (edge uses aie-rt elsewhere). Set before xdp so plugins see vars.
   if (XRT_NPU)
-    # Used by xdp for include search path
-    set(AIERT_DIR ${CMAKE_CURRENT_BINARY_DIR}/aie-rt/driver/src)
+    set(XDP_USE_AIE_CODEGEN 1)
+    set(AIE_CODEGEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/aie-codegen)
     set(XAIENGINE_BUILD_SHARED OFF)
-    xrt_add_subdirectory_disable_install_target(aie-rt/driver/src)
+    xrt_add_subdirectory_disable_install_target(aie-codegen/src)
   endif()
 
   # Build Subdirectories
