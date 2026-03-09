@@ -30,6 +30,22 @@ endif(XRT_ENABLE_WERROR)
 if (NOT XRT_EDGE)
   add_compile_options( ${XRT_WARN_OPTS} )
 endif()
+
+# XDP uses CMake variable XDP_USE_AIE_CODEGEN.  For NPU we must add aie-codegen before xdp
+# so the aie_codegen target exists when XDP builds client plugins that link it.
+# XDP plugin CMakeLists must use AIE_CODEGEN_SOURCE_DIR (set here) for any aie-codegen paths.
+if (XRT_NPU)
+  set(XDP_USE_AIE_CODEGEN 1)
+  set(AIE_CODEGEN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/aie-codegen)
+  if (EXISTS ${AIE_CODEGEN_SOURCE_DIR}/src/CMakeLists.txt)
+    message(STATUS "XRT NPU build: adding aie-codegen from ${AIE_CODEGEN_SOURCE_DIR}")
+    set(AIE_CODEGEN_BUILD_SHARED OFF)
+    xrt_add_subdirectory_disable_install_target(aie-codegen/src)
+  else()
+    message(FATAL_ERROR "XRT_NPU build requires aie-codegen at ${AIE_CODEGEN_SOURCE_DIR}. Run: git submodule add <aie-codegen-url> src/runtime_src/aie-codegen")
+  endif()
+endif()
+
 xrt_add_subdirectory(xdp)
 
 xrt_add_subdirectory(tools/xclbinutil)
@@ -83,11 +99,17 @@ else()
     add_compile_options( ${XRT_WARN_OPTS} )
   endif()
 
+  # XDP plugin CMakeLists must use AIE_CODEGEN_SOURCE_DIR (set here) for any aie-codegen paths.
   if (XRT_NPU)
-    # Used by xdp for include search path
-    set(AIERT_DIR ${CMAKE_CURRENT_BINARY_DIR}/aie-rt/driver/src)
-    set(XAIENGINE_BUILD_SHARED OFF)
-    xrt_add_subdirectory_disable_install_target(aie-rt/driver/src)
+    set(XDP_USE_AIE_CODEGEN 1)
+    set(AIE_CODEGEN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/aie-codegen)
+    if (EXISTS ${AIE_CODEGEN_SOURCE_DIR}/src/CMakeLists.txt)
+      message(STATUS "XRT NPU build: adding aie-codegen from ${AIE_CODEGEN_SOURCE_DIR}")
+      set(AIE_CODEGEN_BUILD_SHARED OFF)
+      xrt_add_subdirectory_disable_install_target(aie-codegen/src)
+    else()
+      message(FATAL_ERROR "XRT_NPU build requires aie-codegen at ${AIE_CODEGEN_SOURCE_DIR}. Run: git submodule add <aie-codegen-url> src/runtime_src/aie-codegen")
+    endif()
   endif()
 
   # Build Subdirectories
