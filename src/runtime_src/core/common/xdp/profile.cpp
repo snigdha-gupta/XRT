@@ -695,7 +695,7 @@ update_device(void* handle, bool hw_context_flow)
            handle,
            hw_context_flow);
 
-  if (!is_hw_emulation()) {
+  // if (!is_hw_emulation()) {
     load_once_and_update(
              []() {
               return ((xrt_core::config::get_device_trace() != "off") ||
@@ -707,7 +707,7 @@ update_device(void* handle, bool hw_context_flow)
              "Failed to setup for HAL PL trace. Caught exception ",
              handle,
              hw_context_flow);
-  }
+  // }
 
   // Avoid warning until we've added support in all plugins
   (void)(hw_context_flow);
