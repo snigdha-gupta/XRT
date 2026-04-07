@@ -114,7 +114,12 @@ load()
                  warning_callbacks_empty);
 #else
   static xrt_core::module_loader
-  xdp_aie_loader(std::getenv("AMD_XDP_NPU3") ? "xdp_aie_profile_plugin_npu3" : "xdp_aie_profile_plugin",
+  xdp_aie_loader(
+#if defined(XDP_VE2_BUILD)
+                 "xdp_aie_profile_plugin_zocl",
+#else
+                 std::getenv("AMD_XDP_NPU3") ? "xdp_aie_profile_plugin_npu3" : "xdp_aie_profile_plugin",
+#endif
                  register_callbacks,
                  warning_callbacks_empty);
 #endif
@@ -398,7 +403,12 @@ load()
                        warning_callbacks_empty);
 #else
   static xrt_core::module_loader
-  xdp_aie_trace_loader(std::getenv("AMD_XDP_NPU3") ? "xdp_aie_trace_plugin_npu3" : "xdp_aie_trace_plugin",
+  xdp_aie_trace_loader(
+#if defined(XDP_VE2_BUILD)
+                       "xdp_aie_trace_plugin_zocl",
+#else
+                       std::getenv("AMD_XDP_NPU3") ? "xdp_aie_trace_plugin_npu3" : "xdp_aie_trace_plugin",
+#endif
                        register_callbacks,
                        warning_callbacks_empty);
 #endif
